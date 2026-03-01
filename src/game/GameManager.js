@@ -37,8 +37,8 @@ export class GameManager {
         // Game State
         // Game State
         this.score = {
-            p1: { speed: 0, maxSpeed: 0, jumpDistance: 0, maxJump: 0 },
-            p2: { speed: 0, maxSpeed: 0, jumpDistance: 0, maxJump: 0 }
+            p1: { speed: 0, maxSpeed: 0, jumpDistance: 0, maxJump: 0, coinCount: 0, roundsWon: 0 },
+            p2: { speed: 0, maxSpeed: 0, jumpDistance: 0, maxJump: 0, coinCount: 0, roundsWon: 0 }
         };
 
         this.minuteScore = {
@@ -71,6 +71,9 @@ export class GameManager {
             this.physics.init(this.container);
             this.physicsInitialized = true;
             this.setupControls();
+
+            // Setup Collision Handler for Boost Pads
+            Matter.Events.on(this.physics.engine, 'collisionStart', this.handleCollisions.bind(this));
         } else {
             // Clear existing world
             Matter.World.clear(this.physics.world);
@@ -95,8 +98,8 @@ export class GameManager {
 
         // Reset scores
         this.score = {
-            p1: { speed: 0, maxSpeed: 0, jumpDistance: 0, maxJump: 0 },
-            p2: { speed: 0, maxSpeed: 0, jumpDistance: 0, maxJump: 0 }
+            p1: { speed: 0, maxSpeed: 0, jumpDistance: 0, maxJump: 0, coinCount: 0, roundsWon: 0 },
+            p2: { speed: 0, maxSpeed: 0, jumpDistance: 0, maxJump: 0, coinCount: 0, roundsWon: 0 }
         };
 
         this.minuteScore = {
@@ -121,6 +124,71 @@ export class GameManager {
         this.keys = {};
         window.addEventListener('keydown', (e) => this.keys[e.code] = true);
         window.addEventListener('keyup', (e) => this.keys[e.code] = false);
+    }
+
+    handleCollisions(event) {
+        if (!this.isRunning) return;
+
+        const pairs = event.pairs;
+
+        for (let i = 0; i < pairs.length; i++) {
+            const bodyA = pairs[i].bodyA;
+            const bodyB = pairs[i].bodyB;
+
+            const checkBoostHit = (truck) => {
+                if (!truck) return false;
+                const hitBoost = (bodyA.label === 'boost_pad' && (bodyB === truck.chassis || bodyB === truck.wheelA || bodyB === truck.wheelB)) ||
+                    (bodyB.label === 'boost_pad' && (bodyA === truck.chassis || bodyA === truck.wheelA || bodyA === truck.wheelB));
+                return hitBoost;
+            };
+
+            const checkCoinHit = (truck) => {
+                if (!truck) return null;
+                if (bodyA.label === 'coin' && (bodyB === truck.chassis || bodyB === truck.wheelA || bodyB === truck.wheelB)) return bodyA;
+                if (bodyB.label === 'coin' && (bodyA === truck.chassis || bodyA === truck.wheelA || bodyA === truck.wheelB)) return bodyB;
+                return null;
+            };
+
+            if (checkBoostHit(this.truck1)) {
+                this.triggerBoostJump(this.truck1, 'P1');
+            }
+            if (this.truck2 && checkBoostHit(this.truck2)) {
+                this.triggerBoostJump(this.truck2, 'P2');
+            }
+
+            const coinHitP1 = checkCoinHit(this.truck1);
+            if (coinHitP1) {
+                this.score.p1.coinCount++;
+                this.audioManager.playCoinSound();
+                Matter.World.remove(this.physics.world, coinHitP1);
+            }
+
+            const coinHitP2 = checkCoinHit(this.truck2);
+            if (coinHitP2) {
+                this.score.p2.coinCount++;
+                this.audioManager.playCoinSound();
+                Matter.World.remove(this.physics.world, coinHitP2);
+            }
+        }
+    }
+
+    triggerBoostJump(truck, playerLabel) {
+        const now = performance.now();
+        // 1 second cooldown to prevent multi-triggering from multiple wheels
+        if (truck.lastBoostPadHit && (now - truck.lastBoostPadHit < 1000)) return;
+        truck.lastBoostPadHit = now;
+
+        // Apply massive upward jump 
+        Matter.Body.setVelocity(truck.chassis, {
+            x: truck.chassis.velocity.x + 10,
+            y: -50 // Big jump
+        });
+
+        // Add extreme backward rotation
+        Matter.Body.setAngularVelocity(truck.chassis, -0.2);
+
+        this.ui.triggerCelebration(`${playerLabel} BOOST PAD LAUNCH!`, '');
+        this.audioManager.triggerCelebration();
     }
 
     update(dt) {
@@ -193,10 +261,28 @@ export class GameManager {
         // Minute Timer
         this.minuteTimer += dt;
         if (this.minuteTimer >= 60000) {
-            this.ui.triggerCelebration('MINUTE HIGH SCORES!', `Speed: ${Math.floor(this.minuteScore.maxSpeed)} | Jump: ${Math.floor(this.minuteScore.maxJump)}`);
+            let coinsMsg = `P1 Collected: ${this.score.p1.coinCount}`;
+            if (this.truck2) {
+                if (this.score.p1.coinCount > this.score.p2.coinCount) {
+                    this.score.p1.roundsWon++;
+                    coinsMsg = `P1 WINS COINS: ${this.score.p1.coinCount} TO ${this.score.p2.coinCount}`;
+                } else if (this.score.p2.coinCount > this.score.p1.coinCount) {
+                    this.score.p2.roundsWon++;
+                    coinsMsg = `P2 WINS COINS: ${this.score.p2.coinCount} TO ${this.score.p1.coinCount}`;
+                } else {
+                    coinsMsg = `COIN TIE: ${this.score.p1.coinCount}`;
+                }
+            } else {
+                this.score.p1.roundsWon++;
+            }
+
+            this.ui.triggerCelebration('MINUTE RECAP!', `${coinsMsg} | Max Speed: ${Math.floor(this.minuteScore.maxSpeed)}`);
             this.audioManager.triggerCelebration();
+
             this.minuteScore.maxSpeed = 0;
             this.minuteScore.maxJump = 0;
+            this.score.p1.coinCount = 0;
+            if (this.truck2) this.score.p2.coinCount = 0;
             this.minuteTimer = 0;
         }
 

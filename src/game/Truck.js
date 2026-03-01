@@ -284,6 +284,22 @@ export class Truck {
 
             Matter.Body.applyForce(wheel, wheel.position, { x: forceX, y: forceY });
             Matter.Body.applyForce(this.chassis, wheel.position, { x: -forceX, y: -forceY });
+
+            // SAFETY SNAP: If the wheel gets completely ripped out of place (usually above the chassis)
+            // due to extreme forces, snap it back to its ideal resting position.
+            const currentLocalY = -dx * sinA + dy * cosA;
+            const isFlippedAboveChassis = currentLocalY < 0;
+            const isTooFarHorizontal = Math.abs(errorX) > 100;
+
+            if (isFlippedAboveChassis || isTooFarHorizontal) {
+                // Calculate ideal world position for the wheel
+                const idealWorldX = this.chassis.position.x + targetLocalX * cosA - 40 * sinA;
+                const idealWorldY = this.chassis.position.y + targetLocalX * sinA + 40 * cosA;
+
+                Matter.Body.setPosition(wheel, { x: idealWorldX, y: idealWorldY });
+                Matter.Body.setVelocity(wheel, { ...this.chassis.velocity });
+                Matter.Body.setAngularVelocity(wheel, this.chassis.angularVelocity);
+            }
         };
 
         applyHorizontalSpring(this.wheelA, -this.wheelOffsetX);

@@ -25,10 +25,12 @@ export class UIManager {
         this.p1SpeedStat = this.createStatBox('P1 Speed', '0');
         this.p1JumpStat = this.createStatBox('P1 Jump', '0');
         this.p1BoostStat = this.createStatBox('P1 Boost', '100%');
+        this.p1CoinStat = this.createStatBox('P1 Coins', '0');
 
         this.p2SpeedStat = this.createStatBox('P2 Speed', '0');
         this.p2JumpStat = this.createStatBox('P2 Jump', '0');
         this.p2BoostStat = this.createStatBox('P2 Boost', '100%');
+        this.p2CoinStat = this.createStatBox('P2 Coins', '0');
 
         const p1HudGroup = document.createElement('div');
         p1HudGroup.style.display = 'flex';
@@ -36,11 +38,13 @@ export class UIManager {
         p1HudGroup.appendChild(this.p1SpeedStat.el);
         p1HudGroup.appendChild(this.p1JumpStat.el);
         p1HudGroup.appendChild(this.p1BoostStat.el);
+        p1HudGroup.appendChild(this.p1CoinStat.el);
 
         const p2HudGroup = document.createElement('div');
         p2HudGroup.style.display = 'flex';
         p2HudGroup.style.gap = '30px';
         p2HudGroup.style.textAlign = 'right';
+        p2HudGroup.appendChild(this.p2CoinStat.el);
         p2HudGroup.appendChild(this.p2BoostStat.el);
         p2HudGroup.appendChild(this.p2JumpStat.el);
         p2HudGroup.appendChild(this.p2SpeedStat.el);
@@ -347,39 +351,48 @@ export class UIManager {
         this.controlsOverlay.style.display = 'block';
 
         const resetStat = (stat, label) => {
-            stat.valueEl.innerText = label.includes('Boost') ? '100%' : (label.includes('Speed') ? '0 MPH' : '0 M');
-            stat.recordEl.innerText = `Record: ${stat.valueEl.innerText}`;
+            stat.valueEl.innerText = label.includes('Boost') ? '100%' : (label.includes('Speed') ? '0 MPH' : (label.includes('Coin') ? '0' : '0 M'));
+            stat.recordEl.innerText = label.includes('Coin') ? 'Rounds Won: 0' : `Record: ${stat.valueEl.innerText}`;
         };
 
         resetStat(this.p1SpeedStat, 'P1 Speed');
         resetStat(this.p1JumpStat, 'P1 Jump');
         resetStat(this.p1BoostStat, 'P1 Boost');
+        resetStat(this.p1CoinStat, 'P1 Coins');
 
         if (this.isTwoPlayer) {
             this.p2SpeedStat.el.style.display = 'flex';
             this.p2JumpStat.el.style.display = 'flex';
             this.p2BoostStat.el.style.display = 'flex';
+            this.p2CoinStat.el.style.display = 'flex';
             resetStat(this.p2SpeedStat, 'P2 Speed');
             resetStat(this.p2JumpStat, 'P2 Jump');
             resetStat(this.p2BoostStat, 'P2 Boost');
+            resetStat(this.p2CoinStat, 'P2 Coins');
         } else {
             this.p2SpeedStat.el.style.display = 'none';
             this.p2JumpStat.el.style.display = 'none';
             this.p2BoostStat.el.style.display = 'none';
+            this.p2CoinStat.el.style.display = 'none';
         }
     }
 
     updateHUD(scores, boosts) {
+        const now = performance.now();
+
         const updatePlayerHUD = (prefix, statScores, boostPercent) => {
             const speedStat = this[`${prefix}SpeedStat`];
             const jumpStat = this[`${prefix}JumpStat`];
             const boostStat = this[`${prefix}BoostStat`];
+            const coinStat = this[`${prefix}CoinStat`];
 
             if (statScores) {
                 speedStat.valueEl.innerText = `${statScores.speed} MPH`;
                 jumpStat.valueEl.innerText = `${statScores.jumpDistance} M`;
+                coinStat.valueEl.innerText = `${statScores.coinCount || 0}`;
                 speedStat.recordEl.innerText = `Record: ${statScores.maxSpeed} MPH`;
                 jumpStat.recordEl.innerText = `Record: ${statScores.maxJump} M`;
+                coinStat.recordEl.innerText = `Rounds Won: ${statScores.roundsWon || 0}`;
             }
 
             if (boostPercent !== undefined) {
@@ -396,7 +409,6 @@ export class UIManager {
         if (scores.p2) updatePlayerHUD('p2', scores.p2, boosts?.p2);
 
         // Minute Highscore Tracking
-        const now = performance.now();
         if (now - this.lastTimeHighscore > 60000) {
             this.minuteHighscore = 0;
             this.lastTimeHighscore = now;

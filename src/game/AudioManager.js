@@ -1,7 +1,11 @@
+import Soundfont from 'soundfont-player';
+
 export class AudioManager {
     constructor() {
         this.audioCtx = null;
         this.isPlaying = false;
+        this.instrumentsLoaded = false;
+        this.instruments = {};
 
         this.speed = 0;
         this.baseBpm = 85; // Lowered baseline BPM for a more relaxed, chill vibe
@@ -67,6 +71,22 @@ export class AudioManager {
 
             this.masterGain.connect(this.analyser);
             this.analyser.connect(this.audioCtx.destination);
+
+            this.loadInstruments();
+        }
+    }
+
+    async loadInstruments() {
+        if (this.instrumentsLoaded) return;
+
+        try {
+            // Load chill instruments from Musyng Kite soundfont
+            this.instruments.bass = await Soundfont.instrument(this.audioCtx, 'acoustic_bass', { destination: this.masterGain });
+            this.instruments.melody = await Soundfont.instrument(this.audioCtx, 'electric_piano_1', { destination: this.masterGain });
+            this.instrumentsLoaded = true;
+            console.log("Instruments loaded successfully.");
+        } catch (err) {
+            console.error("Failed to load soundfonts:", err);
         }
     }
 
@@ -193,13 +213,38 @@ export class AudioManager {
         noise.stop(time + 0.1);
     }
 
+    playCoinSound() {
+        if (!this.audioCtx) return;
+        const time = this.audioCtx.currentTime;
+        const osc = this.audioCtx.createOscillator();
+        const gain = this.audioCtx.createGain();
+
+        osc.type = 'sine';
+        // Classic coin sweep from B5 to E6
+        osc.frequency.setValueAtTime(987.77, time);
+        osc.frequency.setValueCurveAtTime(new Float32Array([987.77, 1318.51]), time, 0.1);
+
+        gain.gain.setValueAtTime(0.3, time);
+        gain.gain.exponentialRampToValueAtTime(0.01, time + 0.3);
+
+        osc.connect(gain);
+        gain.connect(this.masterGain);
+
+        osc.start(time);
+        osc.stop(time + 0.35);
+    }
+
     scheduleNote(time, stepDuration) {
         if (!this.audioCtx) return;
 
         if (this.celebrationTimeRemaining > 0) {
             // Play celebration sequence
             const note = this.celebrationNotes[this.celebrationStep % this.celebrationNotes.length];
-            this.playSynth(this.midiToFrequency(note), time, stepDuration * 0.8, 'square', 0.2);
+            if (this.instrumentsLoaded && this.instruments.melody) {
+                this.instruments.melody.play(note, time, { duration: stepDuration * 0.8, gain: 0.6 });
+            } else {
+                this.playSynth(this.midiToFrequency(note), time, stepDuration * 0.8, 'square', 0.2);
+            }
             this.celebrationStep++;
             this.celebrationTimeRemaining -= stepDuration;
         } else {
@@ -207,22 +252,25 @@ export class AudioManager {
             // Bass
             const bassNote = this.bassPattern[this.currentStep];
             if (bassNote) {
-                // Pitch variation based on speed
-                const speedOffset = Math.floor(this.speed / 50) * 2; // Jump a whole step when fast
-                // Use triangle wave and low filter frequency for an electric bass feel
-                // Slowly sweep bass filter between 300hz and 600hz over ~30 seconds
-                const bassFilterFreq = 450 + Math.sin(time * 0.2) * 150;
-                this.playSynth(this.midiToFrequency(bassNote + speedOffset), time, stepDuration * 0.9, 'triangle', 0.25, bassFilterFreq);
+                const speedOffset = Math.floor(this.speed / 50) * 2;
+                if (this.instrumentsLoaded && this.instruments.bass) {
+                    this.instruments.bass.play(bassNote + speedOffset, time, { duration: stepDuration * 0.9, gain: 0.8 });
+                } else {
+                    const bassFilterFreq = 450 + Math.sin(time * 0.2) * 150;
+                    this.playSynth(this.midiToFrequency(bassNote + speedOffset), time, stepDuration * 0.9, 'triangle', 0.25, bassFilterFreq);
+                }
             }
 
             // Melody (Only play if truck is moving fast enough)
             const melodyNote = this.melodyPattern[this.currentStep];
             if (melodyNote && this.speed > 80) {
-                // Shift up an octave at very high speeds, but always play melody
-                // Use sine wave and warmer filter for a soft rhodes/pad feel
-                // Evolve the melody filter slowly over roughly 60 seconds (sweeps from 600hz to 1800hz)
-                const melodyFilterFreq = 1200 + Math.sin(time * 0.1) * 600;
-                this.playSynth(this.midiToFrequency(melodyNote + (this.speed > 120 ? 12 : 0)), time, stepDuration * 1.5, 'sine', 0.2, melodyFilterFreq);
+                const octaveShift = this.speed > 120 ? 12 : 0;
+                if (this.instrumentsLoaded && this.instruments.melody) {
+                    this.instruments.melody.play(melodyNote + octaveShift, time, { duration: stepDuration * 1.5, gain: 0.6 });
+                } else {
+                    const melodyFilterFreq = 1200 + Math.sin(time * 0.1) * 600;
+                    this.playSynth(this.midiToFrequency(melodyNote + octaveShift), time, stepDuration * 1.5, 'sine', 0.2, melodyFilterFreq);
+                }
             }
 
             // Drums

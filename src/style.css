@@ -85,6 +85,7 @@ canvas {
 .stat {
   display: flex;
   flex-direction: column;
+  min-width: 160px;
 }
 
 .stat-label {
@@ -98,6 +99,7 @@ canvas {
   color: var(--accent-color);
   font-weight: 900;
   font-size: 36px;
+  font-variant-numeric: tabular-nums;
 }
 
 .celebration {

@@ -83,6 +83,44 @@ export class LevelGenerator {
 
             bodies.push(segment);
 
+            // 15% chance to spawn a boost pad on mostly flat/uphill terrain
+            if (Math.random() < 0.15 && type >= 0.3) {
+                const boostWidth = 80;
+                const boostHeight = 20;
+
+                // Position it on top of the segment
+                const padX = midX;
+                const padY = midY - boostHeight / 2 - 5; // Slightly above ground
+
+                const boostPad = Matter.Bodies.rectangle(padX, padY, boostWidth, boostHeight, {
+                    isStatic: true,
+                    isSensor: true,
+                    angle: angle,
+                    label: 'boost_pad',
+                    render: {
+                        fillStyle: '#ff9800',
+                        strokeStyle: '#ffffff',
+                        lineWidth: 2
+                    }
+                });
+                bodies.push(boostPad);
+            } else if (Math.random() < 0.3) {
+                // 30% chance to spawn a coin if no boost pad
+                // Spawn it floating in the air a bit
+                const coinY = midY - 60 - Math.random() * 60;
+                const coin = Matter.Bodies.circle(midX, coinY, 15, {
+                    isStatic: true,
+                    isSensor: true,
+                    label: 'coin',
+                    render: {
+                        fillStyle: '#ffd700', // Gold
+                        strokeStyle: '#d4af37', // Darker gold outline
+                        lineWidth: 3
+                    }
+                });
+                bodies.push(coin);
+            }
+
             cx = nextX;
             cy = nextY;
         }

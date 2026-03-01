@@ -210,8 +210,36 @@ export class PhysicsEngine {
                 this.ctx.drawImage(img, -img.width / 2 + offX, -img.height / 2 + offY, img.width, img.height);
                 this.ctx.restore();
             } else {
-                this.ctx.fillStyle = body.render?.fillStyle || '#8b949e';
-                this.ctx.fill();
+                if (body.label === 'boost_pad') {
+                    const time = performance.now();
+                    // Make the pad pulse and glow
+                    this.ctx.shadowBlur = 20 + Math.sin(time * 0.005) * 10;
+                    this.ctx.shadowColor = '#ffaa00';
+                    this.ctx.fillStyle = body.render?.fillStyle || '#ff9800';
+                    this.ctx.fill();
+                    this.ctx.shadowBlur = 0; // Reset shadow for other objects
+
+                    // Draw floating glowing particles above it
+                    for (let p = 0; p < 8; p++) {
+                        // Spread particles horizontally
+                        const pX = body.position.x + Math.sin(time * 0.002 + p * 1.5) * 40;
+                        // Move particles upward and loop them
+                        const yOffset = (time * 0.05 + p * 15) % 60;
+                        const pY = body.position.y + 10 - yOffset;
+
+                        // Fade out as they go higher
+                        const alpha = Math.max(0, 1 - (yOffset / 60));
+                        const size = 2 + Math.sin(time * 0.01 + p) * 1.5;
+
+                        this.ctx.beginPath();
+                        this.ctx.arc(pX, pY, size, 0, Math.PI * 2);
+                        this.ctx.fillStyle = `rgba(255, 200, 0, ${alpha})`;
+                        this.ctx.fill();
+                    }
+                } else {
+                    this.ctx.fillStyle = body.render?.fillStyle || '#8b949e';
+                    this.ctx.fill();
+                }
 
                 if (body.render?.strokeStyle) {
                     this.ctx.lineWidth = body.render?.lineWidth || 2;
