@@ -33,21 +33,19 @@ export class UIManager {
         this.p2CoinStat = this.createStatBox('P2 Coins', '0');
 
         const p1HudGroup = document.createElement('div');
-        p1HudGroup.style.display = 'flex';
-        p1HudGroup.style.gap = '30px';
+        p1HudGroup.className = 'hud-group p1-hud';
         p1HudGroup.appendChild(this.p1SpeedStat.el);
         p1HudGroup.appendChild(this.p1JumpStat.el);
         p1HudGroup.appendChild(this.p1BoostStat.el);
         p1HudGroup.appendChild(this.p1CoinStat.el);
 
         const p2HudGroup = document.createElement('div');
-        p2HudGroup.style.display = 'flex';
-        p2HudGroup.style.gap = '30px';
-        p2HudGroup.style.textAlign = 'right';
+        p2HudGroup.className = 'hud-group p2-hud';
         p2HudGroup.appendChild(this.p2CoinStat.el);
         p2HudGroup.appendChild(this.p2BoostStat.el);
         p2HudGroup.appendChild(this.p2JumpStat.el);
         p2HudGroup.appendChild(this.p2SpeedStat.el);
+        this.p2HudGroup = p2HudGroup;
 
         this.hud.style.width = '100%';
         this.hud.style.boxSizing = 'border-box';
@@ -116,9 +114,6 @@ export class UIManager {
 
         const recordEl = document.createElement('div');
         recordEl.className = 'stat-record';
-        recordEl.style.fontSize = '0.5em';
-        recordEl.style.color = '#aaaaaa';
-        recordEl.style.marginTop = '4px';
         recordEl.innerText = 'Record: ' + initialValue;
 
         el.appendChild(labelEl);
@@ -393,19 +388,13 @@ export class UIManager {
         resetStat(this.p1CoinStat, 'P1 Coins');
 
         if (this.isTwoPlayer) {
-            this.p2SpeedStat.el.style.display = 'flex';
-            this.p2JumpStat.el.style.display = 'flex';
-            this.p2BoostStat.el.style.display = 'flex';
-            this.p2CoinStat.el.style.display = 'flex';
+            this.p2HudGroup.style.display = 'flex';
             resetStat(this.p2SpeedStat, 'P2 Speed');
             resetStat(this.p2JumpStat, 'P2 Jump');
             resetStat(this.p2BoostStat, 'P2 Boost');
             resetStat(this.p2CoinStat, 'P2 Coins');
         } else {
-            this.p2SpeedStat.el.style.display = 'none';
-            this.p2JumpStat.el.style.display = 'none';
-            this.p2BoostStat.el.style.display = 'none';
-            this.p2CoinStat.el.style.display = 'none';
+            this.p2HudGroup.style.display = 'none';
         }
     }
 

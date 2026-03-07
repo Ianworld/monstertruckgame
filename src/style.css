@@ -82,6 +82,20 @@ canvas {
   z-index: 10;
 }
 
+.hud-group {
+  display: flex;
+  gap: 30px;
+}
+
+.p1-hud {
+  justify-content: flex-start;
+}
+
+.p2-hud {
+  text-align: right;
+  justify-content: flex-end;
+}
+
 .stat {
   display: flex;
   flex-direction: column;
@@ -100,6 +114,12 @@ canvas {
   font-weight: 900;
   font-size: 36px;
   font-variant-numeric: tabular-nums;
+}
+
+.stat-record {
+  font-size: 12px;
+  color: #aaaaaa;
+  margin-top: 4px;
 }
 
 .celebration {
@@ -266,12 +286,39 @@ canvas {
   }
 
   .hud {
-    padding: 10px 20px;
-    font-size: 16px;
+    padding: 10px 10px;
+    font-size: 14px;
+    width: 100%;
+  }
+
+  .hud-group {
+    gap: 8px;
+    width: 100%;
+    justify-content: space-between;
+  }
+
+  .stat {
+    min-width: unset;
+    align-items: center;
+  }
+
+  .p1-hud .stat,
+  .p2-hud .stat {
+    align-items: center;
+  }
+
+  .stat-label {
+    font-size: 9px;
+    letter-spacing: 0;
   }
 
   .stat-value {
-    font-size: 24px;
+    font-size: 16px;
+  }
+
+  .stat-record {
+    font-size: 8px;
+    margin-top: 2px;
   }
 
   .menu-options {
@@ -351,4 +398,35 @@ canvas {
   background: rgba(46, 160, 67, 0.6);
   border-color: #3fb950;
   box-shadow: 0 0 15px rgba(46, 160, 67, 0.8);
+}
+
+/* Phone landscape optimizations */
+@media (max-width: 950px) and (max-height: 500px) and (orientation: landscape) {
+  .hud {
+    padding: 10px 30px;
+    width: 100%;
+  }
+
+  .hud-group {
+    gap: 20px;
+    width: 100%;
+    justify-content: space-between;
+  }
+
+  .stat {
+    min-width: unset;
+  }
+
+  .stat-label {
+    font-size: 11px;
+    letter-spacing: 1px;
+  }
+
+  .stat-value {
+    font-size: 20px;
+  }
+
+  .stat-record {
+    font-size: 10px;
+  }
 }
