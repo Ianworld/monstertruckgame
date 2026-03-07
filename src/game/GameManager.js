@@ -288,8 +288,13 @@ export class GameManager {
 
         // Camera follow both trucks
         const targetPositions = [this.truck1.getPosition()];
-        if (this.truck2) targetPositions.push(this.truck2.getPosition());
-        this.physics.updateCamera(targetPositions);
+        const speeds = [this.truck1.getSpeed()];
+        if (this.truck2) {
+            targetPositions.push(this.truck2.getPosition());
+            speeds.push(this.truck2.getSpeed());
+        }
+        const maxSpeedLocal = Math.max(...speeds);
+        this.physics.updateCamera(targetPositions, maxSpeedLocal);
 
         // Minute Timer
         this.minuteTimer += dt;

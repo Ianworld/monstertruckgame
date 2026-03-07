@@ -46,7 +46,7 @@ export class PhysicsEngine {
         Matter.Engine.update(this.engine, dt);
     }
 
-    updateCamera(targetPosArray) {
+    updateCamera(targetPosArray, maxSpeed = 0) {
         if (!Array.isArray(targetPosArray)) {
             targetPosArray = [targetPosArray];
         }
@@ -69,13 +69,24 @@ export class PhysicsEngine {
 
         // Base zoom level depending on screen width (mobile screens need to view more initially)
         const isMobile = this.canvas.width < 768;
-        const baseZoom = isMobile ? 0.45 : 1.0;
+        const isLandscape = this.canvas.width > this.canvas.height;
+
+        let baseZoom = isMobile ? 0.45 : 1.0;
+
+        if (isMobile && isLandscape) {
+            baseZoom = 0.35; // Zoom out more for landscape mobile
+        }
+
+        // Dynamically adjust zoom out based on truck speed (up to 30% reduction)
+        const maxSpeedFactor = Math.min(1.0, Math.max(0, maxSpeed / 100)); // Cap speed factor near 100 MPH
+        const speedZoomModifier = 1.0 - (maxSpeedFactor * 0.3); // Scale down to 70% zoom
+        baseZoom *= speedZoomModifier;
 
         let targetZoom = baseZoom;
         if (dist > maxDistAllowed) {
             targetZoom = maxDistAllowed / dist * baseZoom;
         }
-        targetZoom = Math.max(0.2, Math.min(baseZoom, targetZoom));
+        targetZoom = Math.max(0.1, Math.min(baseZoom, targetZoom));
 
         this.camera.zoom += (targetZoom - this.camera.zoom) * 0.05;
 
