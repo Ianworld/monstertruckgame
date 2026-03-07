@@ -8,7 +8,8 @@ export class LevelGenerator {
         this.lastX = -500;
         this.lastY = 300;
 
-        this.groundColor = '#1f6feb';
+        this.currentHue = 0; // Tracks rainbow progression
+        this.groundColor = '#1f6feb'; // Default fallback
     }
 
     generateInitial() {
@@ -70,13 +71,18 @@ export class LevelGenerator {
             const midX = cx + (nextX - cx) / 2;
             const midY = cy + (nextY - cy) / 2;
 
+            // Generate shifting rainbow color for ground
+            this.currentHue = (this.currentHue + 8) % 360; // Advance hue incrementally
+            const blockColor = `hsl(${this.currentHue}, 70%, 50%)`;
+            const blockStroke = `hsl(${this.currentHue}, 80%, 40%)`;
+
             const segment = Matter.Bodies.rectangle(midX, midY + 150, width, 300, {
                 isStatic: true,
                 angle: angle,
                 friction: 0.8,
                 render: {
-                    fillStyle: this.groundColor,
-                    strokeStyle: '#388bfd',
+                    fillStyle: blockColor,
+                    strokeStyle: blockStroke,
                     lineWidth: 4
                 }
             });
