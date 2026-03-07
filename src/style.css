@@ -165,6 +165,32 @@ canvas {
   pointer-events: none;
 }
 
+.fullscreen-btn {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  width: 40px;
+  height: 40px;
+  background: rgba(13, 17, 23, 0.6);
+  backdrop-filter: blur(4px);
+  border: 1px solid rgba(88, 166, 255, 0.3);
+  border-radius: 8px;
+  display: none;
+  justify-content: center;
+  align-items: center;
+  cursor: pointer;
+  z-index: 101;
+  pointer-events: auto;
+  color: var(--text-color);
+  transition: all 0.2s ease;
+}
+
+.fullscreen-btn:hover {
+  background: rgba(13, 17, 23, 0.8);
+  border-color: var(--accent-color);
+}
+
+
 .title {
   font-size: 80px;
   font-weight: 900;
@@ -343,6 +369,10 @@ canvas {
     font-size: 24px;
     top: 60px;
   }
+
+  .fullscreen-btn {
+    display: flex;
+  }
 }
 
 /* Touch Controls */
@@ -428,5 +458,9 @@ canvas {
 
   .stat-record {
     font-size: 10px;
+  }
+
+  .fullscreen-btn {
+    display: flex;
   }
 }

@@ -93,6 +93,17 @@ export class UIManager {
         this.touchControls.style.display = 'none'; // Hidden by default
         this.uiLayer.appendChild(this.touchControls);
 
+        // Fullscreen Button
+        this.fullscreenBtn = document.createElement('div');
+        this.fullscreenBtn.className = 'fullscreen-btn';
+        this.fullscreenBtn.innerHTML = `
+            <svg viewBox="0 0 24 24" width="24" height="24" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"></path>
+            </svg>
+        `;
+        this.fullscreenBtn.onclick = () => this.toggleFullscreen();
+        this.uiLayer.appendChild(this.fullscreenBtn);
+
         // Main Menu
         this.buildMenu();
 
@@ -571,6 +582,31 @@ export class UIManager {
             this.debugMenu.style.display = 'block';
         } else {
             this.debugMenu.style.display = 'none';
+        }
+    }
+
+    toggleFullscreen() {
+        const elem = document.documentElement;
+        if (!document.fullscreenElement && !document.mozFullScreenElement && !document.webkitFullscreenElement && !document.msFullscreenElement) {
+            if (elem.requestFullscreen) {
+                elem.requestFullscreen();
+            } else if (elem.msRequestFullscreen) {
+                elem.msRequestFullscreen();
+            } else if (elem.mozRequestFullScreen) {
+                elem.mozRequestFullScreen();
+            } else if (elem.webkitRequestFullscreen) {
+                elem.webkitRequestFullscreen(Element.ALLOW_KEYBOARD_INPUT);
+            }
+        } else {
+            if (document.exitFullscreen) {
+                document.exitFullscreen();
+            } else if (document.msExitFullscreen) {
+                document.msExitFullscreen();
+            } else if (document.mozCancelFullScreen) {
+                document.mozCancelFullScreen();
+            } else if (document.webkitExitFullscreen) {
+                document.webkitExitFullscreen();
+            }
         }
     }
 }
