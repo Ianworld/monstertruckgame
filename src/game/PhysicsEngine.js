@@ -12,6 +12,7 @@ export class PhysicsEngine {
         this.ctx = this.canvas.getContext('2d');
 
         this.camera = { x: 0, y: 0, zoom: 1 };
+        this.smoothedSpeed = 0; // Low-pass filter for zoom scaling
 
         // Background particles/shapes
         this.bgShapes = [];
@@ -77,20 +78,23 @@ export class PhysicsEngine {
             baseZoom = 0.35; // Zoom out more for landscape mobile
         }
 
+        // Apply a low-pass filter to the speed to prevent sudden camera shaking/jitters
+        this.smoothedSpeed += (maxSpeed - this.smoothedSpeed) * 0.05;
+
         // Dynamically adjust zoom out based on truck speed
         // Non-linear ramp up to 35mph, then linear up to 100mph, max 50% zoom reduction
         let speedFactor = 0;
         const transitionSpeed = 35;
         const maxSpeedLimit = 100;
 
-        if (maxSpeed <= transitionSpeed) {
+        if (this.smoothedSpeed <= transitionSpeed) {
             // Quadratic ramp: 0 to transitionSpeed maps to a small portion of the 50% reduction
             // For example, at 35mph, let's say it reduces zoom by 15%
-            const t = maxSpeed / transitionSpeed;
+            const t = this.smoothedSpeed / transitionSpeed;
             speedFactor = (t * t) * 0.15; // 0 to 0.15 reduction
         } else {
             // Linear from 35mph to 100mph, mapping the remaining 0.15 to 0.50 reduction
-            const t = Math.min(1.0, (maxSpeed - transitionSpeed) / (maxSpeedLimit - transitionSpeed));
+            const t = Math.min(1.0, (this.smoothedSpeed - transitionSpeed) / (maxSpeedLimit - transitionSpeed));
             speedFactor = 0.15 + (t * 0.35); // 0.15 to 0.50 reduction
         }
 
