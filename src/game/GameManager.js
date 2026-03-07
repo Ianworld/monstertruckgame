@@ -124,6 +124,39 @@ export class GameManager {
         this.keys = {};
         window.addEventListener('keydown', (e) => this.keys[e.code] = true);
         window.addEventListener('keyup', (e) => this.keys[e.code] = false);
+
+        // Touch Control State
+        this.autoDrive = false;
+        this.touchBoost = false;
+
+        // Bind Touch Events
+        if (this.ui.touchDriveBtn) {
+            this.ui.touchDriveBtn.addEventListener('touchstart', (e) => {
+                e.preventDefault();
+                this.autoDrive = !this.autoDrive;
+                if (this.autoDrive) {
+                    this.ui.touchDriveBtn.classList.add('active-toggle');
+                } else {
+                    this.ui.touchDriveBtn.classList.remove('active-toggle');
+                }
+            });
+        }
+
+        if (this.ui.touchJumpBtn) {
+            this.ui.touchJumpBtn.addEventListener('touchstart', (e) => {
+                e.preventDefault();
+                if (this.truck1) this.truck1.jump();
+            });
+        }
+
+        if (this.ui.touchBoostBtn) {
+            const startBoost = (e) => { e.preventDefault(); this.touchBoost = true; };
+            const stopBoost = (e) => { e.preventDefault(); this.touchBoost = false; };
+
+            this.ui.touchBoostBtn.addEventListener('touchstart', startBoost);
+            this.ui.touchBoostBtn.addEventListener('touchend', stopBoost);
+            this.ui.touchBoostBtn.addEventListener('touchcancel', stopBoost);
+        }
     }
 
     handleCollisions(event) {
@@ -196,13 +229,13 @@ export class GameManager {
 
         // Process input
         // Process input P1 (WASD + Shift)
-        if (this.keys['KeyD']) {
+        if (this.keys['KeyD'] || this.autoDrive) {
             this.truck1.accelerate(1);
         } else if (this.keys['KeyA']) {
             this.truck1.accelerate(-1);
         }
 
-        if (this.keys['ShiftLeft'] || this.keys['ShiftRight']) {
+        if (this.keys['ShiftLeft'] || this.keys['ShiftRight'] || this.touchBoost) {
             this.truck1.boost();
         }
 

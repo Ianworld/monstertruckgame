@@ -67,16 +67,22 @@ export class PhysicsEngine {
         const dist = Math.abs(maxX - minX);
         const maxDistAllowed = this.canvas.width * 0.5;
 
-        let targetZoom = 1;
+        // Base zoom level depending on screen width (mobile screens need to view more initially)
+        const isMobile = this.canvas.width < 768;
+        const baseZoom = isMobile ? 0.45 : 1.0;
+
+        let targetZoom = baseZoom;
         if (dist > maxDistAllowed) {
-            targetZoom = maxDistAllowed / dist;
+            targetZoom = maxDistAllowed / dist * baseZoom;
         }
-        targetZoom = Math.max(0.3, Math.min(1.0, targetZoom));
+        targetZoom = Math.max(0.2, Math.min(baseZoom, targetZoom));
 
         this.camera.zoom += (targetZoom - this.camera.zoom) * 0.05;
 
         // Keep truck midpoint roughly at 1/3 of the screen width factoring in zoom
-        const targetX = midX - (this.canvas.width * 0.3 / this.camera.zoom);
+        // On mobile, keep it a bit closer to center
+        const screenOffset = isMobile ? 0.4 : 0.3;
+        const targetX = midX - (this.canvas.width * screenOffset / this.camera.zoom);
         const targetY = midY - (this.canvas.height * 0.6 / this.camera.zoom);
 
         // Smooth camera follow

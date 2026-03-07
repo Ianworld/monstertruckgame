@@ -151,6 +151,7 @@ canvas {
   margin-bottom: 20px;
   background: linear-gradient(135deg, var(--accent-color), #2ea043);
   -webkit-background-clip: text;
+  background-clip: text;
   -webkit-text-fill-color: transparent;
   text-shadow: 0 4px 20px rgba(88, 166, 255, 0.4);
 }
@@ -233,4 +234,121 @@ canvas {
 
 .start-btn:active {
   transform: translateY(2px) scale(0.95);
+}
+
+/* Mobile responsive styles */
+@media (max-width: 768px) {
+  .players-container {
+    flex-direction: column !important;
+    gap: 20px !important;
+    align-items: center;
+    width: 100%;
+  }
+
+  .menu {
+    overflow-y: auto;
+    justify-content: flex-start;
+    padding-top: 20px;
+    padding-bottom: 40px;
+  }
+
+  .title {
+    font-size: 40px;
+    text-align: center;
+    margin-bottom: 10px;
+    line-height: 1.1;
+  }
+
+  .preview-box {
+    width: 100% !important;
+    max-width: 350px !important;
+    height: 200px !important;
+  }
+
+  .hud {
+    padding: 10px 20px;
+    font-size: 16px;
+  }
+
+  .stat-value {
+    font-size: 24px;
+  }
+
+  .menu-options {
+    flex-direction: column;
+    gap: 15px !important;
+  }
+
+  .card-selector {
+    flex-wrap: wrap;
+    justify-content: center;
+  }
+
+  .controls-overlay {
+    display: none !important;
+  }
+
+  .touch-controls {
+    display: flex !important;
+  }
+
+  .celebration {
+    font-size: 24px;
+    top: 60px;
+  }
+}
+
+/* Touch Controls */
+.touch-controls {
+  position: absolute;
+  bottom: 30px;
+  left: 0;
+  width: 100%;
+  display: none;
+  /* hidden on wide screens */
+  justify-content: space-between;
+  padding: 0 40px;
+  pointer-events: none;
+  /* let touches pass through empty space */
+  z-index: 50;
+  box-sizing: border-box;
+}
+
+.touch-group {
+  display: flex;
+  gap: 20px;
+}
+
+.touch-btn {
+  background: rgba(88, 166, 255, 0.3);
+  border: 2px solid var(--accent-color);
+  border-radius: 50%;
+  width: 70px;
+  height: 70px;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  color: white;
+  font-weight: 900;
+  font-size: 14px;
+  text-transform: uppercase;
+  user-select: none;
+  pointer-events: auto;
+  /* Buttons catch touch */
+  backdrop-filter: blur(4px);
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.5);
+  transition: transform 0.1s, background 0.2s, border-color 0.2s, box-shadow 0.2s;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.touch-btn:active {
+  transform: scale(0.9);
+  background: rgba(88, 166, 255, 0.6);
+}
+
+.touch-btn.active-toggle {
+  background: rgba(46, 160, 67, 0.6);
+  border-color: #3fb950;
+  box-shadow: 0 0 15px rgba(46, 160, 67, 0.8);
 }

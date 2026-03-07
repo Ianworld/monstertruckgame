@@ -67,6 +67,34 @@ export class UIManager {
         this.controlsOverlay.style.display = 'none';
         this.uiLayer.appendChild(this.controlsOverlay);
 
+        // Touch Controls
+        this.touchControls = document.createElement('div');
+        this.touchControls.className = 'touch-controls';
+
+        this.touchDriveBtn = document.createElement('div');
+        this.touchDriveBtn.className = 'touch-btn touch-drive';
+        this.touchDriveBtn.innerText = 'DRIVE';
+
+        const rightGroup = document.createElement('div');
+        rightGroup.className = 'touch-group';
+
+        this.touchJumpBtn = document.createElement('div');
+        this.touchJumpBtn.className = 'touch-btn touch-jump';
+        this.touchJumpBtn.innerText = 'JUMP';
+
+        this.touchBoostBtn = document.createElement('div');
+        this.touchBoostBtn.className = 'touch-btn touch-boost';
+        this.touchBoostBtn.innerText = 'BOOST';
+
+        rightGroup.appendChild(this.touchJumpBtn);
+        rightGroup.appendChild(this.touchBoostBtn);
+
+        this.touchControls.appendChild(this.touchDriveBtn);
+        this.touchControls.appendChild(rightGroup);
+
+        this.touchControls.style.display = 'none'; // Hidden by default
+        this.uiLayer.appendChild(this.touchControls);
+
         // Main Menu
         this.buildMenu();
 
@@ -137,6 +165,7 @@ export class UIManager {
         this.menu.appendChild(toggleContainer);
 
         const playersContainer = document.createElement('div');
+        playersContainer.className = 'players-container';
         playersContainer.style.display = 'flex';
         playersContainer.style.gap = '50px';
         playersContainer.style.marginBottom = '20px';
@@ -342,6 +371,7 @@ export class UIManager {
         this.menu.classList.remove('hidden');
         this.hud.style.display = 'none';
         this.controlsOverlay.style.display = 'none';
+        this.touchControls.style.display = 'none';
         this.celebration.classList.remove('active');
     }
 
@@ -349,6 +379,8 @@ export class UIManager {
         this.menu.classList.add('hidden');
         this.hud.style.display = 'flex';
         this.controlsOverlay.style.display = 'block';
+        // Let CSS media query display flex handle the actual visibility
+        this.touchControls.style.display = '';
 
         const resetStat = (stat, label) => {
             stat.valueEl.innerText = label.includes('Boost') ? '100%' : (label.includes('Speed') ? '0 MPH' : (label.includes('Coin') ? '0' : '0 M'));
