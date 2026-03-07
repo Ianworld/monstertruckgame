@@ -147,6 +147,7 @@ export class Truck {
         this.speed = 0;
         this.boostLevel = 100; // 0 to 100
         this.isBoosting = false;
+        this.upsideDownTime = 0; // Tracks how long the truck has been inverted
     }
 
     getPosition() {
@@ -346,10 +347,26 @@ export class Truck {
         }
 
         // Auto-righting logic (assist to keep the truck from fully flipping)
-        if (this.chassis.angle > Math.PI / 3) {
-            this.chassis.torque = -3;
-        } else if (this.chassis.angle < -Math.PI / 3) {
-            this.chassis.torque = 3;
+        // Check if truck is substantially tilted (more than 60 degrees)
+        if (this.chassis.angle > Math.PI / 3 || this.chassis.angle < -Math.PI / 3) {
+            this.upsideDownTime += dt;
+
+            // Calculate a gentle restoring force that builds up over time
+            // Starts very small and grows larger the longer it's stuck
+            // Maxes out after about 3 seconds
+            const timeFactor = Math.min(1.0, this.upsideDownTime / 3000);
+
+            // Base torque + escalating torque
+            const rightingTorque = 1 + (15 * timeFactor);
+
+            if (this.chassis.angle > Math.PI / 3) {
+                this.chassis.torque = -rightingTorque;
+            } else {
+                this.chassis.torque = rightingTorque;
+            }
+        } else {
+            // Reset timer when upright
+            this.upsideDownTime = 0;
         }
     }
 }
