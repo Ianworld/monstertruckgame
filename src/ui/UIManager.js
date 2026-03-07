@@ -223,9 +223,9 @@ export class UIManager {
     updateControlsOverlay() {
         if (this.controlsOverlay) {
             if (this.isTwoPlayer) {
-                this.controlsOverlay.innerHTML = '<span>[P1]</span> WASD & Shift &nbsp;&nbsp;|&nbsp;&nbsp; <span>[P2]</span> Arrows & Space';
+                this.controlsOverlay.innerHTML = '<span>[P1]</span> WASD (Toggle Drive) & L-Shift &nbsp;&nbsp;|&nbsp;&nbsp; <span>[P2]</span> Arrows (Toggle) & R-Shift';
             } else {
-                this.controlsOverlay.innerHTML = '<span>[Right/D]</span> Accelerate &nbsp;&nbsp;|&nbsp;&nbsp; <span>[Space/Shift]</span> Boost &nbsp;&nbsp;|&nbsp;&nbsp; <span>[Up/W]</span> Jump';
+                this.controlsOverlay.innerHTML = '<span>[A/D]</span> Toggle Drive &nbsp;&nbsp;|&nbsp;&nbsp; <span>[L-Shift]</span> Boost &nbsp;&nbsp;|&nbsp;&nbsp; <span>[W]</span> Jump';
             }
         }
     }

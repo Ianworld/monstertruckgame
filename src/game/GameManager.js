@@ -108,6 +108,14 @@ export class GameManager {
         };
         this.minuteTimer = 0;
 
+        // Reset toggles for driving
+        this.toggles = {
+            forwardP1: false,
+            backwardP1: false,
+            forwardP2: false,
+            backwardP2: false
+        };
+
         // Reset audio manager speed
         if (this.audioManager) {
             this.audioManager.updateSpeed(0);
@@ -122,7 +130,34 @@ export class GameManager {
 
     setupControls() {
         this.keys = {};
-        window.addEventListener('keydown', (e) => this.keys[e.code] = true);
+
+        // Initialize if empty to prevent undefined errors before startGame
+        this.toggles = this.toggles || {
+            forwardP1: false, backwardP1: false,
+            forwardP2: false, backwardP2: false
+        };
+
+        window.addEventListener('keydown', (e) => {
+            if (!this.keys[e.code]) { // Only trigger on initial press, not hold repeats
+                if (e.code === 'KeyD') {
+                    this.toggles.forwardP1 = !this.toggles.forwardP1;
+                    if (this.toggles.forwardP1) this.toggles.backwardP1 = false;
+                }
+                if (e.code === 'KeyA') {
+                    this.toggles.backwardP1 = !this.toggles.backwardP1;
+                    if (this.toggles.backwardP1) this.toggles.forwardP1 = false;
+                }
+                if (e.code === 'ArrowRight') {
+                    this.toggles.forwardP2 = !this.toggles.forwardP2;
+                    if (this.toggles.forwardP2) this.toggles.backwardP2 = false;
+                }
+                if (e.code === 'ArrowLeft') {
+                    this.toggles.backwardP2 = !this.toggles.backwardP2;
+                    if (this.toggles.backwardP2) this.toggles.forwardP2 = false;
+                }
+            }
+            this.keys[e.code] = true;
+        });
         window.addEventListener('keyup', (e) => this.keys[e.code] = false);
 
         // Touch Control State
@@ -228,14 +263,14 @@ export class GameManager {
         if (!this.isRunning) return;
 
         // Process input
-        // Process input P1 (WASD + Shift)
-        if (this.keys['KeyD'] || this.autoDrive) {
+        // Process input P1 (WASD + L-Shift)
+        if (this.toggles.forwardP1 || this.autoDrive) {
             this.truck1.accelerate(1);
-        } else if (this.keys['KeyA']) {
+        } else if (this.toggles.backwardP1) {
             this.truck1.accelerate(-1);
         }
 
-        if (this.keys['ShiftLeft'] || this.keys['ShiftRight'] || this.touchBoost) {
+        if (this.keys['ShiftLeft'] || this.touchBoost) {
             this.truck1.boost();
         }
 
@@ -244,15 +279,15 @@ export class GameManager {
             this.keys['KeyW'] = false;
         }
 
-        // Process input P2 (Arrows + Space)
+        // Process input P2 (Arrows + R-Shift)
         if (this.truck2) {
-            if (this.keys['ArrowRight']) {
+            if (this.toggles.forwardP2) {
                 this.truck2.accelerate(1);
-            } else if (this.keys['ArrowLeft']) {
+            } else if (this.toggles.backwardP2) {
                 this.truck2.accelerate(-1);
             }
 
-            if (this.keys['Space']) {
+            if (this.keys['ShiftRight']) {
                 this.truck2.boost();
             }
 
