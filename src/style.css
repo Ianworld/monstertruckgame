@@ -463,4 +463,12 @@ canvas {
   .fullscreen-btn {
     display: flex;
   }
+
+  .controls-overlay {
+    display: none !important;
+  }
+
+  .touch-controls {
+    display: flex !important;
+  }
 }
