@@ -2,6 +2,43 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.4] - 2026-08-02
+
+### Added
+- **Four courses, and a picker to choose between them.** Each card in the menu shows
+  the course's real elevation profile with its obstacles marked, drawn by running
+  the actual course through a dry-run generator - so the preview cannot drift away
+  from the track you get.
+  - **Sunshine Speedway** (easy) - wide open rolling hills, coins everywhere, big
+    friendly jumps
+  - **Mud Bog** (medium) - mud drags, washboard whoops, crate stacks
+  - **Glacier Run** (medium) - ice patches, springboards, caves, one big jump
+  - **Scrapyard Smash** (hard) - crates everywhere, tunnels, double springboards
+- New obstacle types: **whoops** (washboard bumps that show off the suspension),
+  **dips** (scoops you can drive through or fly over), **ice** (almost no grip),
+  **tunnels** (low roofs you cannot jump inside), **springboards** (straight up,
+  no spin) and **smashable crates** (light enough to send flying).
+- Courses are written against a cursor DSL, so a course reads as a description of a
+  ride: `track.ramp(800, 240).boost(0.55); track.dip(1300, 200).coins(130);`
+- `CourseHazards` collects everything a course does TO a truck - pads, springs, mud,
+  coins, crates - in one place with no UI or audio in it, so a bot can drive a
+  course headlessly with the real hazard behaviour attached.
+- Crate-smash and springboard sound effects.
+- **A bot drives every course, in the test suite.** It has already caught two
+  courses that geometry checks passed but no player could finish.
+
+### Changed
+- Terrain colour now sweeps back and forth within each course's palette band rather
+  than incrementing through the whole spectrum. Scrapyard's purple had turned cyan
+  by 3,000px, so no course kept the look its preview promised.
+- Mud is much less punishing: it compounds 60 times a second, so the old 0.93
+  retention put the equilibrium speed at 14mph and made Mud Bog a 50-second slog.
+  At 0.97 it is a noticeable drag at about 34mph.
+
+### Fixed
+- The menu could not be scrolled, so on a short window the start button was simply
+  unreachable. It now scrolls, and scales itself down at 900px and 700px tall.
+
 ## [0.3.1] - 2026-08-01
 
 ### Fixed

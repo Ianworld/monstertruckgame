@@ -1,5 +1,7 @@
 import { CharacterGraphics } from '../game/CharacterGraphics.js';
 import { DEFAULT_TUNING } from '../game/TruckTuning.js';
+import { COURSES, DEFAULT_COURSE_ID } from '../game/Courses.js';
+import { LevelGenerator } from '../game/LevelGenerator.js';
 
 export class UIManager {
     constructor(container, callbacks) {
@@ -127,6 +129,9 @@ export class UIManager {
         subTitle.innerText = 'Race to the Finish Line in ~60 Seconds!';
         this.menu.appendChild(subTitle);
 
+        this.selectedCourseId = DEFAULT_COURSE_ID;
+        this.menu.appendChild(this.createCourseSelector());
+
         const playersContainer = document.createElement('div');
         playersContainer.className = 'players-container';
         playersContainer.style.display = 'flex';
@@ -152,7 +157,8 @@ export class UIManager {
             if (this.callbacks.onStart) {
                 this.callbacks.onStart({
                     player1: this.p1Config,
-                    player2: this.p2Config
+                    player2: this.p2Config,
+                    courseId: this.selectedCourseId
                 });
             }
         };
@@ -162,6 +168,128 @@ export class UIManager {
 
         this.updatePreview('p1');
         this.updatePreview('p2');
+    }
+
+    /** Course picker. Each card previews the real terrain, not an illustration. */
+    createCourseSelector() {
+        const wrapper = document.createElement('div');
+        wrapper.className = 'course-selector';
+
+        const heading = document.createElement('h3');
+        heading.className = 'course-heading';
+        heading.innerText = 'Pick a Course';
+        wrapper.appendChild(heading);
+
+        const row = document.createElement('div');
+        row.className = 'course-row';
+
+        for (const course of COURSES) {
+            const card = document.createElement('button');
+            card.className = 'course-card';
+            card.dataset.courseId = course.id;
+            if (course.id === this.selectedCourseId) card.classList.add('selected');
+
+            const canvas = document.createElement('canvas');
+            canvas.className = 'course-map';
+            canvas.width = 260;
+            canvas.height = 78;
+            this.drawCourseMap(canvas, course);
+            card.appendChild(canvas);
+
+            const name = document.createElement('div');
+            name.className = 'course-name';
+            name.innerText = course.name;
+            card.appendChild(name);
+
+            const blurb = document.createElement('div');
+            blurb.className = 'course-blurb';
+            blurb.innerText = course.blurb;
+            card.appendChild(blurb);
+
+            const rating = document.createElement('div');
+            rating.className = 'course-difficulty';
+            rating.innerText = '●'.repeat(course.difficulty) + '○'.repeat(3 - course.difficulty);
+            rating.title = `Difficulty ${course.difficulty} of 3`;
+            card.appendChild(rating);
+
+            card.onclick = (e) => {
+                e.target.blur();
+                this.selectedCourseId = course.id;
+                row.querySelectorAll('.course-card').forEach(c => c.classList.remove('selected'));
+                card.classList.add('selected');
+            };
+
+            row.appendChild(card);
+        }
+
+        wrapper.appendChild(row);
+        return wrapper;
+    }
+
+    /**
+     * Sketch a course's elevation profile with its obstacles marked. Built by
+     * running the real course through a dry-run LevelGenerator, so the picture
+     * cannot drift away from the track you actually get.
+     */
+    drawCourseMap(canvas, course) {
+        const ctx = canvas.getContext('2d');
+        if (!ctx) return;
+
+        const track = new LevelGenerator(null).build(course);
+        const points = track.surface;
+        if (points.length < 2) return;
+
+        const minX = points[0].x;
+        const maxX = track.finishX;
+        const ys = points.map(p => p.y);
+        const minY = Math.min(...ys);
+        const maxY = Math.max(...ys);
+
+        const padding = 8;
+        const width = canvas.width - padding * 2;
+        const height = canvas.height - padding * 2;
+        const toX = (x) => padding + ((x - minX) / (maxX - minX)) * width;
+        const toY = (y) => padding + ((y - minY) / Math.max(1, maxY - minY)) * height * 0.72;
+
+        const hue = course.palette?.hue ?? 120;
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+        // Ground fill under the profile.
+        ctx.beginPath();
+        ctx.moveTo(toX(points[0].x), canvas.height);
+        for (const point of points) {
+            if (point.x > maxX) break;
+            ctx.lineTo(toX(point.x), toY(point.y));
+        }
+        ctx.lineTo(toX(maxX), canvas.height);
+        ctx.closePath();
+        ctx.fillStyle = `hsla(${hue}, 60%, 45%, 0.5)`;
+        ctx.fill();
+        ctx.strokeStyle = `hsl(${hue}, 70%, 62%)`;
+        ctx.lineWidth = 2;
+        ctx.stroke();
+
+        // Obstacle markers, so each course reads differently at a glance.
+        const marks = {
+            boost_pad: '#ff9800',
+            spring_pad: '#22d3a6',
+            mud_pit: '#6d4c41',
+            crate: '#a1734b',
+            tunnel: '#c9d1d9'
+        };
+        for (const marker of track.markers) {
+            const colour = marks[marker.type];
+            if (!colour || marker.x > maxX) continue;
+            ctx.beginPath();
+            ctx.arc(toX(marker.x), toY(marker.y) - 4, marker.type === 'crate' ? 1.6 : 2.6, 0, Math.PI * 2);
+            ctx.fillStyle = colour;
+            ctx.fill();
+        }
+
+        // Finish flag.
+        ctx.fillStyle = '#ffffff';
+        ctx.fillRect(toX(maxX) - 2, toY(track.groundYAt(maxX)) - 16, 2, 16);
+        ctx.fillRect(toX(maxX) - 8, toY(track.groundYAt(maxX)) - 16, 6, 5);
     }
 
     createPlayerSelection(titleText, config, playerId) {

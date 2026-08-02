@@ -5,6 +5,8 @@ import { LevelGenerator } from './LevelGenerator.js';
 import { UIManager } from '../ui/UIManager.js';
 import { AudioManager } from './AudioManager.js';
 import { createTuning, LIVE_TUNING_KEYS } from './TruckTuning.js';
+import { CourseHazards } from './CourseHazards.js';
+import { getCourse } from './Courses.js';
 
 export class GameManager {
     constructor(container) {
@@ -77,8 +79,18 @@ export class GameManager {
             this.physicsInitialized = true;
             this.setupControls();
 
-            Matter.Events.on(this.physics.engine, 'collisionStart', this.handleCollisions.bind(this));
-            Matter.Events.on(this.physics.engine, 'collisionActive', this.handleActiveCollisions.bind(this));
+            this.hazards = new CourseHazards(this.physics, {
+                onCoin: (truck, id) => {
+                    this.score[id].coinCount++;
+                    this.audioManager.playCoinSound();
+                },
+                onBoost: (truck, id) => {
+                    this.ui.triggerCelebration(`${id.toUpperCase()} SPEED BOOST!`, 'BOOST');
+                    this.audioManager.triggerCelebration();
+                },
+                onSpring: () => this.audioManager.playSpringSound(),
+                onSmash: () => this.audioManager.playSmashSound()
+            });
         } else {
             this.physics.clearTrucks();
             Matter.World.clear(this.physics.world);
@@ -87,9 +99,8 @@ export class GameManager {
 
         this.physics.world.gravity.y = this.tuning.gravity;
 
-        // Build Fixed 60-Second Race Track
-        this.levelGenerator = new LevelGenerator(this.physics.world);
-        this.levelGenerator.generateFixedTrack();
+        this.course = getCourse(config.courseId);
+        this.levelGenerator = new LevelGenerator(this.physics.world).build(this.course);
         this.finishX = this.levelGenerator.finishX;
 
         // Spawn P1 and P2 Monster Trucks at the Start Line
@@ -99,6 +110,10 @@ export class GameManager {
 
         this.physics.addTruck(this.truck1);
         this.physics.addTruck(this.truck2);
+
+        this.hazards.reset();
+        this.hazards.addTruck(this.truck1, 'p1');
+        this.hazards.addTruck(this.truck2, 'p2');
 
         // Each truck races the same DISTANCE from its own grid slot, so the
         // stagger on the start line costs nobody anything.
@@ -165,97 +180,9 @@ export class GameManager {
         });
     }
 
-    handleCollisions(event) {
-        if (!this.isRunning) return;
-
-        const pairs = event.pairs;
-
-        for (let i = 0; i < pairs.length; i++) {
-            const bodyA = pairs[i].bodyA;
-            const bodyB = pairs[i].bodyB;
-
-            const checkBoostHit = (truck) => {
-                if (!truck) return false;
-                return (bodyA.label === 'boost_pad' && this.ownsBody(truck, bodyB)) ||
-                    (bodyB.label === 'boost_pad' && this.ownsBody(truck, bodyA));
-            };
-
-            // A coin overlaps the chassis AND both wheels, which is three pairs in
-            // the same event. Claiming it once is the difference between a 79-coin
-            // track and a scoreboard that reads 83.
-            const checkCoinHit = (truck) => {
-                if (!truck) return null;
-                if (bodyA.label === 'coin' && !bodyA.claimed && this.ownsBody(truck, bodyB)) return bodyA;
-                if (bodyB.label === 'coin' && !bodyB.claimed && this.ownsBody(truck, bodyA)) return bodyB;
-                return null;
-            };
-
-            const collect = (coin, player) => {
-                coin.claimed = true;
-                this.score[player].coinCount++;
-                this.audioManager.playCoinSound();
-                Matter.World.remove(this.physics.world, coin);
-            };
-
-            if (checkBoostHit(this.truck1)) {
-                this.triggerBoostJump(this.truck1, 'P1');
-            }
-            if (this.truck2 && checkBoostHit(this.truck2)) {
-                this.triggerBoostJump(this.truck2, 'P2');
-            }
-
-            const coinHitP1 = checkCoinHit(this.truck1);
-            if (coinHitP1) collect(coinHitP1, 'p1');
-
-            const coinHitP2 = checkCoinHit(this.truck2);
-            if (coinHitP2) collect(coinHitP2, 'p2');
-        }
-    }
-
-    handleActiveCollisions(event) {
-        if (!this.isRunning || this.raceState !== 'RACING') return;
-
-        const pairs = event.pairs;
-
-        // Flag mud contact only; the truck applies the drag once per frame so
-        // three overlapping contacts can't triple the penalty.
-        for (let i = 0; i < pairs.length; i++) {
-            const bodyA = pairs[i].bodyA;
-            const bodyB = pairs[i].bodyB;
-
-            const flagMud = (truck) => {
-                if (!truck) return;
-                const isMud = (bodyA.label === 'mud_pit' && this.ownsBody(truck, bodyB)) ||
-                    (bodyB.label === 'mud_pit' && this.ownsBody(truck, bodyA));
-                if (isMud) truck.mudTouch = true;
-            };
-
-            flagMud(this.truck1);
-            if (this.truck2) flagMud(this.truck2);
-        }
-    }
-
-    ownsBody(truck, body) {
-        return body === truck.chassis || body === truck.wheelA || body === truck.wheelB;
-    }
-
-    triggerBoostJump(truck, playerLabel) {
-        const now = performance.now();
-        if (truck.lastBoostPadHit && (now - truck.lastBoostPadHit < 1000)) return;
-        truck.lastBoostPadHit = now;
-
-        // Launch the whole vehicle, not just the chassis: pulling the body out
-        // from under itself was what made the truck flip off every boost pad.
-        for (const part of truck.parts) {
-            Matter.Body.setVelocity(part, {
-                x: part.velocity.x + 6,
-                y: Math.min(part.velocity.y, 0) - 24
-            });
-        }
-        Matter.Body.setAngularVelocity(truck.chassis, -0.06);
-
-        this.ui.triggerCelebration(`${playerLabel} SPEED BOOST!`, 'BOOST');
-        this.audioManager.triggerCelebration();
+    /** Distance covered from this truck's own grid slot. */
+    trackProgress(truck) {
+        return truck.getPosition().x - truck.spawnChassisPosition.x;
     }
 
     update(dt) {
@@ -330,6 +257,7 @@ export class GameManager {
 
         // Update physics
         this.physics.update(dt);
+        this.hazards.update(dt);
         this.truck1.update(dt);
         if (this.truck2) this.truck2.update(dt);
 
@@ -384,11 +312,6 @@ export class GameManager {
         }
 
         this.updateScores();
-    }
-
-    /** Distance covered from this truck's own grid slot. */
-    trackProgress(truck) {
-        return truck.getPosition().x - truck.spawnChassisPosition.x;
     }
 
     handleDebugChange(key, value) {

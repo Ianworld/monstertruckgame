@@ -752,6 +752,72 @@ export class AudioManager {
         }
     }
 
+    /** Splintering wood: a filtered noise crack over a low woody thud. */
+    playSmashSound() {
+        if (!this.audioCtx) return;
+        const ctx = this.audioCtx;
+        const time = ctx.currentTime;
+
+        const crack = this.noiseSource(time, 0.22);
+        const filter = ctx.createBiquadFilter();
+        filter.type = 'bandpass';
+        filter.frequency.value = 2400;
+        filter.Q.value = 0.7;
+        const level = ctx.createGain();
+        level.gain.setValueAtTime(0.3, time);
+        level.gain.exponentialRampToValueAtTime(0.0001, time + 0.2);
+
+        crack.connect(filter);
+        filter.connect(level);
+        level.connect(this.sfxBus);
+        level.connect(this.reverbSend);
+
+        const thud = ctx.createOscillator();
+        thud.type = 'triangle';
+        thud.frequency.setValueAtTime(180, time);
+        thud.frequency.exponentialRampToValueAtTime(70, time + 0.12);
+        const thudGain = ctx.createGain();
+        thudGain.gain.setValueAtTime(0.28, time);
+        thudGain.gain.exponentialRampToValueAtTime(0.0001, time + 0.16);
+        thud.connect(thudGain);
+        thudGain.connect(this.sfxBus);
+        thud.start(time);
+        thud.stop(time + 0.18);
+    }
+
+    /** Springboard: a cartoon boing, pitch rising as you leave the pad. */
+    playSpringSound() {
+        if (!this.audioCtx) return;
+        const ctx = this.audioCtx;
+        const time = ctx.currentTime;
+
+        const osc = ctx.createOscillator();
+        osc.type = 'triangle';
+        osc.frequency.setValueAtTime(180, time);
+        osc.frequency.exponentialRampToValueAtTime(900, time + 0.18);
+
+        // A little wobble on the way up is what makes it read as a spring.
+        const wobble = ctx.createOscillator();
+        wobble.type = 'sine';
+        wobble.frequency.value = 22;
+        const wobbleDepth = ctx.createGain();
+        wobbleDepth.gain.value = 120;
+        wobble.connect(wobbleDepth);
+        wobbleDepth.connect(osc.frequency);
+
+        const level = ctx.createGain();
+        level.gain.setValueAtTime(0.0001, time);
+        level.gain.exponentialRampToValueAtTime(0.26, time + 0.01);
+        level.gain.exponentialRampToValueAtTime(0.0001, time + 0.3);
+
+        osc.connect(level);
+        level.connect(this.sfxBus);
+        level.connect(this.reverbSend);
+
+        osc.start(time); osc.stop(time + 0.32);
+        wobble.start(time); wobble.stop(time + 0.32);
+    }
+
     /**
      * A flourish laid OVER the music rather than replacing it - stopping the
      * track for two seconds every time you clip a boost pad is worse than the

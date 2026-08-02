@@ -1,205 +1,374 @@
 import Matter from 'matter-js';
 
+export const GROUND_Y = 250;
+export const APRON_START = -800;
+export const APRON_END = 1400;
+
+/**
+ * Builds a course out of terrain and obstacles.
+ *
+ * Courses are written against the cursor API below (see Courses.js): each terrain
+ * call extends the track from wherever the last one finished and moves the cursor,
+ * and each obstacle call decorates the section that was just built. That keeps a
+ * course readable as a description of a ride:
+ *
+ *     track.hill(1400, 160).coins();
+ *     track.ramp(700, -260).boost(0.5);
+ *     track.dip(1000, 180);
+ *
+ * Everything placed on the track is positioned against `groundYAt()`, a polyline of
+ * the real drivable surface recorded as segments are built - never against whatever
+ * the terrain height happened to be when the last section ended.
+ *
+ * Pass `world = null` for a dry run: the surface and markers are still computed but
+ * no physics bodies are made, which is how the menu draws course previews.
+ */
 export class LevelGenerator {
     constructor(world) {
         this.world = world;
-        this.finishX = 30000; // Fixed finish line position (takes ~60 seconds)
-        this.startX = 0;
-        this.currentHue = 0;
-        this.trackBodies = [];
+        this.dryRun = !world;
 
-        // Polyline of the drivable top surface, recorded as segments are built.
-        // Everything placed on the track (coins, boost pads, mud) is positioned
-        // relative to this rather than to whatever the terrain height happened to
-        // be at the end of the last segment.
+        this.startX = 0;
+        this.finishX = 20000;
+        this.trackBodies = [];
         this.surface = [];
+        this.markers = [];        // {type, x, y} for previews and tests
+
+        this.cursor = { x: APRON_START, y: GROUND_Y };
+        this.sectionStart = APRON_START;
+        this.baseHue = 120;
+        this.hueSpread = 45;
+        this.hueStep = 6;
+        this.stripIndex = 0;
     }
 
-    generateFixedTrack() {
+    // ------------------------------------------------------------------ build
+
+    /** Lay out a whole course, including the start apron and run-off. */
+    build(course) {
         this.trackBodies = [];
         this.surface = [];
-        this.currentHue = 120; // Start green
+        this.markers = [];
+        this.cursor = { x: APRON_START, y: GROUND_Y };
+        this.baseHue = course.palette?.hue ?? 120;
+        this.hueSpread = course.palette?.spread ?? 45;
+        this.hueStep = course.palette?.step ?? 6;
+        this.stripIndex = 0;
 
-        // 1. FLAT STARTING AREA (-800 to 1200)
-        this.addSegment(-800, 250, 1200, 250, 120, '#2ea043');
+        // Every course starts on the same flat apron. The trucks spawn here and
+        // settle during the countdown, so a course cannot forget to provide it.
+        this.addSegment(APRON_START, GROUND_Y, APRON_END, GROUND_Y, this.baseHue, '#2ea043');
+        this.cursor = { x: APRON_END, y: GROUND_Y };
+        this.sectionStart = APRON_END;
 
-        let cx = 1200;
-        let cy = 250;
+        course.build(this);
 
-        // Helper for adding smooth terrain segments
-        const addHill = (length, heightDelta, hueShift = 5) => {
-            const steps = 6;
-            const stepWidth = length / steps;
-            for (let i = 0; i < steps; i++) {
-                const nextX = cx + stepWidth;
-                // Sinusoidal curve for smooth natural hills
-                const factor = Math.sin(((i + 1) / steps) * Math.PI - Math.PI / 2);
-                const prevFactor = Math.sin((i / steps) * Math.PI - Math.PI / 2);
-                const nextY = cy + (factor - prevFactor) * heightDelta;
+        // Level out, then a generous run-off so nobody has to brake to win.
+        this.flat(400);
+        this.finishX = Math.round(this.cursor.x);
+        this.flat(4000);
 
-                this.currentHue = (this.currentHue + hueShift) % 360;
-                this.addSlopeSegment(cx, cy, nextX, nextY, this.currentHue);
+        this.addWall(this.cursor.x + 200);
+        this.addWall(APRON_START - 100);
 
-                cx = nextX;
-                cy = nextY;
+        return this;
+    }
+
+    // -------------------------------------------------------- cursor terrain
+
+    /** Flat run. */
+    flat(length) {
+        return this.section(() => {
+            this.strip(this.cursor.x + length, this.cursor.y);
+        });
+    }
+
+    /** Straight incline. Negative `drop` climbs. */
+    slope(length, drop) {
+        return this.section(() => {
+            this.strip(this.cursor.x + length, this.cursor.y + drop);
+        });
+    }
+
+    /** Smooth up-and-over. `height` is how far it rises before coming back down. */
+    hill(length, height, steps = 10) {
+        return this.section(() => {
+            const startX = this.cursor.x;
+            const startY = this.cursor.y;
+            for (let i = 1; i <= steps; i++) {
+                const t = i / steps;
+                // A full sine period: up, over, and back to the starting height.
+                this.strip(startX + length * t, startY - Math.sin(t * Math.PI) * height);
             }
-        };
+        });
+    }
 
-        // Pickups take a HEIGHT ABOVE THE TRACK, not an absolute y, and are always
-        // spawned after the terrain they sit on has been built.
+    /**
+     * A scoop out of the track. Drive down through it, or carry enough speed to
+     * fly it - either way you come out the far side, which is why these are dips
+     * and not holes. Nothing on any course can drop a player into the void.
+     */
+    dip(length, depth, steps = 10) {
+        return this.section(() => {
+            const startX = this.cursor.x;
+            const startY = this.cursor.y;
+            for (let i = 1; i <= steps; i++) {
+                const t = i / steps;
+                this.strip(startX + length * t, startY + Math.sin(t * Math.PI) * depth);
+            }
+        });
+    }
 
-        // --- SECTION 1: ROLLING HILLS & COIN RUN (1,200 to 7,000) ---
-        addHill(1500, -120); // Uphill
-        addHill(1500, 150);  // Downhill
-        this.spawnCoins(cx - 2000, cx, 90);
+    /**
+     * Washboard bumps. The suspension eats these; they are here to be felt.
+     *
+     * Two things keep them fun rather than fatal. The wavelength has to be well
+     * clear of the 116px wheelbase - at 230px the wheels sat in neighbouring
+     * troughs and the chassis grounded out on the crest between them, which
+     * stopped a full-throttle truck dead. And eight samples per bump keeps them
+     * curved; at four the sine samples only its peaks and zeros, so you get a
+     * triangle wave with 46-degree faces.
+     */
+    whoops(count, height = 24, spacing = 400) {
+        return this.section(() => {
+            const startX = this.cursor.x;
+            const startY = this.cursor.y;
+            const steps = count * 8;
+            const length = count * spacing;
+            for (let i = 1; i <= steps; i++) {
+                const t = i / steps;
+                this.strip(startX + length * t, startY - Math.sin(t * count * Math.PI * 2) * height);
+            }
+        });
+    }
 
-        addHill(1400, -180); // Bigger hill
-        this.spawnBoostPad(cx - 100);
-        addHill(1400, 200);  // Drop
-        this.spawnCoins(cx - 1400, cx, 100);
+    /** Straight launch ramp. Follow it with a drop and you have a jump. */
+    ramp(length, rise) {
+        return this.slope(length, -Math.abs(rise));
+    }
 
-        // --- SECTION 2: SPEED RAMPS & BOOST CANYONS (7,000 to 14,000) ---
-        // Big Ramp
-        const rampX = cx + 800;
-        const rampY = cy - 300;
-        this.addSlopeSegment(cx, cy, rampX, rampY, 200);
-        this.spawnBoostPad((cx + rampX) / 2);
-        cx = rampX;
-        cy = rampY;
+    /** Slick going. Same shape as flat ground, almost no grip. */
+    ice(length, drop = 0) {
+        return this.section(() => {
+            this.strip(this.cursor.x + length, this.cursor.y + drop, {
+                friction: 0.02,
+                color: '#a5d8f3',
+                stroke: '#7fb8d9'
+            });
+        });
+    }
 
-        // Valley, with coins riding the descent
-        addHill(1200, 350);
-        this.spawnCoins(cx - 1000, cx, 110);
+    // ------------------------------------------------------------- obstacles
+    // These decorate the section just built. `t` is a fraction along it.
 
-        // Catch ramp up
-        addHill(2000, -300);
-        this.spawnBoostPad(cx - 400);
+    boost(t = 0.5) {
+        const x = this.pointInSection(t);
+        this.addSensor(x, this.groundYAt(x) - 16, 90, 20, 'boost_pad', {
+            fillStyle: '#ff9800', strokeStyle: '#ffffff', lineWidth: 3
+        });
+        return this;
+    }
 
-        // Flat fast section
-        const flatEnd = cx + 1800;
-        this.addSlopeSegment(cx, cy, flatEnd, cy, 240);
-        this.spawnCoins(cx, flatEnd, 85);
-        cx = flatEnd;
+    /** Trampoline pad: straight up, for height rather than speed. */
+    spring(t = 0.5) {
+        const x = this.pointInSection(t);
+        this.addSensor(x, this.groundYAt(x) - 14, 110, 22, 'spring_pad', {
+            fillStyle: '#22d3a6', strokeStyle: '#ffffff', lineWidth: 3
+        });
+        return this;
+    }
 
-        // --- SECTION 3: MUD PITS & ROUGH TERRAIN (14,000 to 21,000) ---
-        addHill(1500, -150);
-        addHill(1500, 150);
+    mud(from = 0.1, to = 0.9) {
+        const startX = this.pointInSection(from);
+        const endX = this.pointInSection(to);
+        const centreX = (startX + endX) / 2;
+        this.addSensor(centreX, this.groundYAt(centreX) - 15, endX - startX, 30, 'mud_pit', {
+            fillStyle: '#4e342e', strokeStyle: '#3e2723', lineWidth: 2
+        });
+        return this;
+    }
 
-        // Mud Pit Section
-        const mudStartX = cx;
-        const mudEndX = cx + 1600;
-        this.addSlopeSegment(mudStartX, cy, mudEndX, cy, 30);
-        this.spawnMudPit(mudStartX + 200, 1200, 30);
-        cx = mudEndX;
+    /**
+     * A stack of crates to smash. Light enough that a monster truck sends them
+     * flying rather than being stopped by them - that is the whole point of them.
+     */
+    crates(columns = 3, rows = 2, t = 0.5) {
+        const size = 46;
+        const baseX = this.pointInSection(t) - (columns * size) / 2;
 
-        // Bounce hills after mud
-        addHill(1200, -200);
-        this.spawnBoostPad(cx - 100);
-        addHill(1200, 200);
-        this.spawnCoins(cx - 2000, cx, 95);
+        for (let column = 0; column < columns; column++) {
+            for (let row = 0; row < rows; row++) {
+                const x = baseX + column * (size + 2) + size / 2;
+                const y = this.groundYAt(x) - size / 2 - row * (size + 1) - 2;
+                this.addCrate(x, y, size);
+            }
+        }
+        return this;
+    }
 
-        // --- SECTION 4: MEGA BOOST FLYWAY (21,000 to 27,000) ---
-        // Steep launcher ramp
-        const launchX = cx + 1000;
-        const launchY = cy - 400;
-        this.addSlopeSegment(cx, cy, launchX, launchY, 50);
-        this.spawnBoostPad((cx + launchX) / 2);
-        cx = launchX;
-        cy = launchY;
+    /** Low roof. You can drive it flat out, but you cannot jump inside it. */
+    tunnel(length, clearance = 230) {
+        return this.section(() => {
+            const startX = this.cursor.x;
+            this.strip(startX + length, this.cursor.y);
 
-        // Mega drop. Coins sit high here, so they reward a jump on the way down.
-        addHill(2200, 400);
-        this.spawnCoins(cx - 1800, cx - 200, 130);
+            const midX = startX + length / 2;
+            const roofY = this.groundYAt(midX) - clearance;
+            // Labelled so it is never mistaken for drivable ground - it is solid
+            // and static like the track, but it is above you, not under you.
+            this.addStatic(midX, roofY - 40, length, 80, {
+                fillStyle: '#30363d', strokeStyle: '#8b949e', lineWidth: 3
+            }, 'tunnel_roof');
+            this.markers.push({ type: 'tunnel', x: midX, y: roofY });
+        });
+    }
 
-        // Recovery stretch
-        const stretchX = cx + 1800;
-        this.addSlopeSegment(cx, cy, stretchX, cy, 180);
-        this.spawnBoostPad(cx + 400);
-        cx = stretchX;
+    /** A run of coins following the terrain of the section just built. */
+    coins(height = 90, wobble = 28) {
+        const spacing = 120;
+        const from = this.sectionStart;
+        const to = this.cursor.x;
+        const count = Math.floor((to - from) / spacing);
 
-        // --- SECTION 5: FINAL FINISH LINE JUMP (27,000 to 30,000) ---
-        // Final Ramp up to Finish
-        const finalRampX = 29500;
-        const finalRampY = cy - 250;
-        this.addSlopeSegment(cx, cy, finalRampX, finalRampY, 300);
-        this.spawnBoostPad((cx + finalRampX) / 2);
+        for (let i = 0; i < count; i++) {
+            const x = from + i * spacing + spacing / 2;
+            const y = this.groundYAt(x) - height + Math.sin(i * 0.5) * wobble;
+            this.addSensor(x, y, 32, 32, 'coin', {
+                fillStyle: '#ffd700', strokeStyle: '#d4af37', lineWidth: 3
+            }, true);
+        }
+        return this;
+    }
 
-        // Finish Line Platform at 30,000
-        this.addSegment(finalRampX, finalRampY, 30000, 240, 120, '#2ea043');
+    // ------------------------------------------------------------- internals
 
-        // RUN-OFF PLATFORM & END SAFETY WALL (30,000 to 34,000)
-        this.addSegment(30000, 240, 34000, 240, 120, '#2ea043');
+    /** Run a terrain builder, remembering where the section started. */
+    section(build) {
+        this.sectionStart = this.cursor.x;
+        build();
+        return this;
+    }
 
-        // End Safety Wall
-        const wall = Matter.Bodies.rectangle(33800, 0, 100, 1000, {
+    /** Absolute x at fraction `t` through the section just built. */
+    pointInSection(t) {
+        return this.sectionStart + (this.cursor.x - this.sectionStart) * t;
+    }
+
+    /** Extend the track from the cursor to (x, y) and move the cursor there. */
+    strip(x, y, options = {}) {
+        this.addSegment(this.cursor.x, this.cursor.y, x, y, this.nextHue(), options.color, options);
+        this.cursor = { x, y };
+    }
+
+    /**
+     * Colour for the next block: a gentle sweep back and forth WITHIN the course's
+     * palette band, rather than a hue that keeps incrementing.
+     *
+     * Adding a fixed step each block runs the whole spectrum every ~50 segments,
+     * so Scrapyard's purple had turned cyan by 3,000px and no course kept the look
+     * its preview promised.
+     */
+    nextHue() {
+        this.stripIndex++;
+        const wave = Math.sin((this.stripIndex * this.hueStep * Math.PI) / 180);
+        return (this.baseHue + wave * this.hueSpread + 360) % 360;
+    }
+
+    /**
+     * One block of track. Its top face runs from (x1,y1) to (x2,y2) - including
+     * when those differ, which is the whole point: an axis-aligned version would
+     * silently flatten sloped arguments to their average.
+     */
+    addSegment(x1, y1, x2, y2, hue = 120, customColor = null, options = {}) {
+        const dx = x2 - x1;
+        const dy = y2 - y1;
+        const length = Math.hypot(dx, dy);
+        const angle = Math.atan2(dy, dx);
+
+        this.recordSurface(x1, y1, x2, y2);
+        if (this.dryRun) return;
+
+        // Offset the centre PERPENDICULAR to the slope, not straight down in world
+        // space. Sinking it by 150 in world y leaves the top face of a rotated
+        // block somewhere else entirely.
+        const midX = (x1 + x2) / 2;
+        const midY = (y1 + y2) / 2;
+        const centreX = midX - 150 * Math.sin(angle);
+        const centreY = midY + 150 * Math.cos(angle);
+
+        const fill = customColor || `hsl(${hue}, 70%, 50%)`;
+        const stroke = options.stroke || (customColor ? '#ffffff' : `hsl(${hue}, 80%, 40%)`);
+
+        // Overlap neighbours slightly. Butt-jointed blocks leave a notch at every
+        // convex joint, and a 37px tyre dropping into one is a free faceplant.
+        const segment = Matter.Bodies.rectangle(centreX, centreY, length + 12, 300, {
+            isStatic: true,
+            angle,
+            friction: options.friction ?? 0.9,
+            restitution: 0,
+            render: { fillStyle: fill, strokeStyle: stroke, lineWidth: 4 }
+        });
+
+        this.trackBodies.push(segment);
+        Matter.World.add(this.world, segment);
+    }
+
+    addSensor(x, y, width, height, label, render, isCircle = false) {
+        this.markers.push({ type: label, x, y });
+        if (this.dryRun) return;
+
+        const body = isCircle
+            ? Matter.Bodies.circle(x, y, width / 2, { isStatic: true, isSensor: true, label, render })
+            : Matter.Bodies.rectangle(x, y, width, height, {
+                isStatic: true,
+                isSensor: true,
+                angle: this.groundAngleAt(x),
+                label,
+                render
+            });
+
+        this.trackBodies.push(body);
+        Matter.World.add(this.world, body);
+    }
+
+    addStatic(x, y, width, height, render, label = 'scenery') {
+        if (this.dryRun) return;
+        const body = Matter.Bodies.rectangle(x, y, width, height, {
+            isStatic: true, friction: 0.6, label, render
+        });
+        this.trackBodies.push(body);
+        Matter.World.add(this.world, body);
+    }
+
+    addCrate(x, y, size) {
+        this.markers.push({ type: 'crate', x, y });
+        if (this.dryRun) return;
+
+        const crate = Matter.Bodies.rectangle(x, y, size, size, {
+            // Light: about 3% of the chassis, so the truck scatters them.
+            density: 0.0008,
+            friction: 0.4,
+            frictionAir: 0.02,
+            restitution: 0.15,
+            label: 'crate',
+            render: { fillStyle: '#a1734b', strokeStyle: '#5d4037', lineWidth: 3 }
+        });
+        this.trackBodies.push(crate);
+        Matter.World.add(this.world, crate);
+    }
+
+    addWall(x) {
+        if (this.dryRun) return;
+        const wall = Matter.Bodies.rectangle(x, this.groundYAt(x) - 500, 100, 1000, {
             isStatic: true,
             render: { fillStyle: '#ff4444' }
         });
         this.trackBodies.push(wall);
         Matter.World.add(this.world, wall);
-
-        // Start Safety Wall (Left barrier at -800)
-        const startWall = Matter.Bodies.rectangle(-800, 0, 100, 1000, {
-            isStatic: true,
-            render: { fillStyle: '#ff4444' }
-        });
-        this.trackBodies.push(startWall);
-        Matter.World.add(this.world, startWall);
     }
 
-    /**
-     * One block of track. Its top face runs from (x1,y1) to (x2,y2) - including
-     * when those differ, which is the whole point: the old axis-aligned version
-     * silently flattened sloped arguments to their average, leaving a 42px wall
-     * across the track at the finish line.
-     */
-    addSegment(x1, y1, x2, y2, hue = 120, customColor = null) {
-        const dx = x2 - x1;
-        const dy = y2 - y1;
-        const length = Math.hypot(dx, dy);
-        const angle = Math.atan2(dy, dx);
-        const midX = (x1 + x2) / 2;
-        const midY = (y1 + y2) / 2;
+    // -------------------------------------------------------- surface queries
 
-        // Offset the centre PERPENDICULAR to the slope, not straight down in world
-        // space. Sinking it by 150 in world y leaves the top face of a rotated
-        // block somewhere else entirely - on the steepest ramp here that moved the
-        // real driving surface 56px sideways and tore a 110px notch in the crest.
-        const centreX = midX - 150 * Math.sin(angle);
-        const centreY = midY + 150 * Math.cos(angle);
-
-        const blockColor = customColor || `hsl(${hue}, 70%, 50%)`;
-        const blockStroke = customColor ? '#ffffff' : `hsl(${hue}, 80%, 40%)`;
-
-        // Overlap the neighbouring segments slightly. Butt-jointed blocks leave a
-        // notch at every convex joint, and a 37px tyre dropping into one is a free
-        // faceplant.
-        const segment = Matter.Bodies.rectangle(centreX, centreY, length + 12, 300, {
-            isStatic: true,
-            angle: angle,
-            friction: 0.9,
-            restitution: 0,
-            render: {
-                fillStyle: blockColor,
-                strokeStyle: blockStroke,
-                lineWidth: 4
-            }
-        });
-
-        this.trackBodies.push(segment);
-        Matter.World.add(this.world, segment);
-
-        this.recordSurface(x1, y1, x2, y2);
-    }
-
-    /** Reads better at the call site when the segment is deliberately on a slope. */
-    addSlopeSegment(x1, y1, x2, y2, hue = 120) {
-        this.addSegment(x1, y1, x2, y2, hue);
-    }
-
-    // ------------------------------------------------------- surface queries
-
-    /** Append a stretch of drivable surface. Segments are built left to right. */
     recordSurface(x1, y1, x2, y2) {
         const last = this.surface[this.surface.length - 1];
         if (!last || last.x < x1) this.surface.push({ x: x1, y: y1 });
@@ -209,7 +378,7 @@ export class LevelGenerator {
     /** Height of the track surface at `x`, interpolated between segment ends. */
     groundYAt(x) {
         const points = this.surface;
-        if (points.length === 0) return 250;
+        if (points.length === 0) return GROUND_Y;
         if (x <= points[0].x) return points[0].y;
         if (x >= points[points.length - 1].x) return points[points.length - 1].y;
 
@@ -231,75 +400,5 @@ export class LevelGenerator {
     groundAngleAt(x) {
         const step = 30;
         return Math.atan2(this.groundYAt(x + step) - this.groundYAt(x - step), step * 2);
-    }
-
-    // ------------------------------------------------------------- placement
-
-    /**
-     * Boost pad laid ON the track, following its slope. Both position and angle
-     * used to be passed in by hand, which left two of the seven pads buried.
-     */
-    spawnBoostPad(x, height = 16) {
-        const boostPad = Matter.Bodies.rectangle(x, this.groundYAt(x) - height, 90, 20, {
-            isStatic: true,
-            isSensor: true,
-            angle: this.groundAngleAt(x),
-            label: 'boost_pad',
-            render: {
-                fillStyle: '#ff9800',
-                strokeStyle: '#ffffff',
-                lineWidth: 3
-            }
-        });
-        this.trackBodies.push(boostPad);
-        Matter.World.add(this.world, boostPad);
-    }
-
-    spawnMudPit(x, width = 800, height = 30) {
-        const centreX = x + width / 2;
-        const mudPit = Matter.Bodies.rectangle(centreX, this.groundYAt(centreX) - height / 2, width, height, {
-            isStatic: true,
-            isSensor: true,
-            angle: this.groundAngleAt(centreX),
-            label: 'mud_pit',
-            render: {
-                fillStyle: '#4e342e',
-                strokeStyle: '#3e2723',
-                lineWidth: 2
-            }
-        });
-        this.trackBodies.push(mudPit);
-        Matter.World.add(this.world, mudPit);
-    }
-
-    /**
-     * A run of coins that follows the terrain.
-     *
-     * @param {number} height how far above the track surface to float them. The
-     *   truck's silhouette covers roughly 0-120px, so anything under ~120 is
-     *   collected by driving and anything above needs a hop.
-     * @param {number} wobble amplitude of the gentle wave along the run
-     */
-    spawnCoins(startX, endX, height = 90, wobble = 28) {
-        const spacing = 120;
-        const count = Math.floor((endX - startX) / spacing);
-
-        for (let i = 0; i < count; i++) {
-            const cx = startX + i * spacing + spacing / 2;
-            const cy = this.groundYAt(cx) - height + Math.sin(i * 0.5) * wobble;
-
-            const coin = Matter.Bodies.circle(cx, cy, 16, {
-                isStatic: true,
-                isSensor: true,
-                label: 'coin',
-                render: {
-                    fillStyle: '#ffd700',
-                    strokeStyle: '#d4af37',
-                    lineWidth: 3
-                }
-            });
-            this.trackBodies.push(coin);
-            Matter.World.add(this.world, coin);
-        }
     }
 }
