@@ -3,3 +3,7 @@
 .claude/settings.local.json
 
 .DS_Store
+
+# This project lives in Dropbox, which forks a copy whenever it and a build tool
+# write the same file (Vite's dep cache, mostly).
+*conflicted copy*
