@@ -15,6 +15,34 @@ npm run dev
 
 `npm run build` produces `dist/`, which is what GitHub Pages deploys.
 
+## Courses
+
+Four courses, picked from the menu. Each is defined in `src/game/Courses.js` against
+a cursor DSL, so a course reads as the ride it describes:
+
+```js
+track.hill(1400, 160).coins();        // terrain, then coins over what was just built
+track.ramp(800, 240).boost(0.55);     // 0.55 = fraction along the section
+track.dip(1300, 200).coins(130);
+```
+
+Terrain: `flat` `slope` `hill` `dip` `whoops` `ramp` `ice` `tunnel`.
+Obstacles: `boost` `spring` `mud` `crates` `coins`.
+
+Three rules, in order:
+
+1. **Never trap a player.** No holes, no walls to nose into, nothing that can stop a
+   truck dead. Dips have floors; tunnels are tall enough to drive flat out.
+2. **Keep it flowing** - long readable sections and generous landings.
+3. **Then** add a challenge or two, always with a way through for someone who is
+   just holding the throttle.
+
+`new LevelGenerator(null)` is a dry run: it computes the surface and obstacle
+markers without building bodies, which is how the menu draws the previews.
+
+Adding a course means adding an entry to `COURSES`. The tests pick it up
+automatically, including the bot that has to drive it end to end.
+
 ## Physics
 
 The trucks are the game, so their physics lives in a few small, deliberate files:
@@ -76,7 +104,12 @@ against the physics quietly drifting back to feeling bad:
 - `tests/music.test.js` - the score is well formed and in key: melody notes, chord
   voicings, harmony lines and the arrangement's shape. The mix itself is checked by
   offline rendering (above), which Node cannot do.
-- `tests/level.test.js` - track integrity: no holes, no steps a wheel would trip on,
+- `tests/courses.test.js` - **a bot drives every course end to end** on full
+  throttle. Geometry being valid does not mean a course is finishable, and this has
+  already caught two that weren't: whoops whose wavelength was narrower than the
+  wheelbase, so the truck grounded out on the crest between its own wheels; and
+  crate stacks being ploughed into a heap the truck climbed and stalled against.
+- `tests/level.test.js` - track integrity, for every course: no holes, no steps a wheel would trip on,
   and every coin, boost pad and mud pit sitting on the surface rather than inside it.
   These probe the real physics bodies, not the generator's own bookkeeping, because
   the bug they exist for was the two disagreeing.

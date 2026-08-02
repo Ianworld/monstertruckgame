@@ -1,6 +1,8 @@
 import Matter from 'matter-js';
 import { PhysicsEngine } from '../../src/game/PhysicsEngine.js';
 import { Truck } from '../../src/game/Truck.js';
+import { CourseHazards } from '../../src/game/CourseHazards.js';
+import { LevelGenerator } from '../../src/game/LevelGenerator.js';
 import { createTuning, STEP_MS } from '../../src/game/TruckTuning.js';
 
 export const GROUND_Y = 250;
@@ -140,6 +142,74 @@ export function rideHeight(truck) {
 
 export function compressions(truck) {
     return truck.suspension.map(unit => unit.measure().compression);
+}
+
+/**
+ * Drive a real course end to end with the throttle pinned, with the real hazards
+ * attached - boost pads, springboards, mud and smashable crates all behave as
+ * they do in the game. This is the only way to know a course is completable.
+ *
+ * @returns {object} what happened: whether it finished, how long it took, how
+ *   long it spent going nowhere, and how far over it got.
+ */
+export function driveCourse(course, { boost = true, maxSeconds = 100 } = {}) {
+    const physics = new PhysicsEngine();
+    const tuning = createTuning();
+    physics.world.gravity.y = tuning.gravity;
+
+    const level = new LevelGenerator(physics.world).build(course);
+    let coins = 0;
+    const hazards = new CourseHazards(physics, { onCoin: () => coins++ });
+
+    const truck = new Truck(
+        physics,
+        { truckStyle: 'monster', driverStyle: 'nerd' },
+        { x: 400, y: GROUND_Y },
+        tuning
+    );
+    physics.addTruck(truck);
+    hazards.addTruck(truck, 'p1');
+
+    const step = () => {
+        physics.stepFixed();
+        truck.update(STEP_MS);
+        hazards.update(STEP_MS);
+    };
+
+    for (let i = 0; i < 90; i++) step();     // settle on the springs
+
+    let steps = 0;
+    let stalledSeconds = 0;
+    let worstTilt = 0;
+    let airborneSteps = 0;
+    let lastX = truck.chassis.position.x;
+    const limit = maxSeconds * 60;
+
+    while (steps < limit && truck.chassis.position.x < level.finishX) {
+        truck.accelerate(1);
+        if (boost && steps % 30 === 0) truck.boost();
+        step();
+        steps++;
+
+        worstTilt = Math.max(worstTilt, Math.abs(truck.normalisedAngle()));
+        if (truck.isAirborne) airborneSteps++;
+        if (steps % 60 === 0) {
+            if (truck.chassis.position.x - lastX < 60) stalledSeconds++;
+            lastX = truck.chassis.position.x;
+        }
+    }
+
+    return {
+        finished: truck.chassis.position.x >= level.finishX,
+        seconds: +(steps / 60).toFixed(1),
+        reached: Math.round(truck.chassis.position.x),
+        finishX: level.finishX,
+        stalledSeconds,
+        worstTiltDeg: Math.round(worstTilt * 180 / Math.PI),
+        airbornePct: Math.round((airborneSteps / Math.max(1, steps)) * 100),
+        coins,
+        repairs: truck.safetyRepairs
+    };
 }
 
 /**

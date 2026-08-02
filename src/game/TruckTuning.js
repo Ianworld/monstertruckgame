@@ -126,7 +126,11 @@ export const DEFAULT_TUNING = {
     tireSquash: 0.16,               // max vertical squash on a hard hit
     squashAttack: 0.35,
     squashDecay: 0.12,
-    mudGrip: 0.93                   // per-step velocity retained in a mud pit
+    // Per-step velocity retained in a mud pit. This compounds 60 times a second,
+    // so it is far more savage than it looks: drive thrust balances v*(1-grip),
+    // which puts the equilibrium at 14mph for 0.93 and 34mph for 0.97. At 0.93 a
+    // bog was a near-standstill and Mud Bog took 50 seconds to finish.
+    mudGrip: 0.97
 };
 
 /** Keys the debug menu is allowed to poke at runtime. */
