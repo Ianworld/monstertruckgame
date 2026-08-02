@@ -1,137 +1,116 @@
 import { CharacterGraphics } from '../game/CharacterGraphics.js';
+import { DEFAULT_TUNING } from '../game/TruckTuning.js';
 
 export class UIManager {
     constructor(container, callbacks) {
         this.container = container;
         this.callbacks = callbacks;
-        this.lastTimeHighscore = performance.now();
-        this.minuteHighscore = 0;
-        this.isTwoPlayer = false; // Default to 1 Player
+        this.isTwoPlayer = true; // Default to 2-Player Split Screen Race
 
         this.buildUI();
     }
 
     buildUI() {
-        // UI Container
         this.uiLayer = document.createElement('div');
         this.uiLayer.className = 'ui-layer';
         this.container.appendChild(this.uiLayer);
 
-        // HUD
-        this.hud = document.createElement('div');
-        this.hud.className = 'hud';
-        this.uiLayer.appendChild(this.hud);
+        // --- TOP-CENTER TRACK PROGRESS BAR & CENTRAL TIMER ---
+        this.trackHeader = document.createElement('div');
+        this.trackHeader.className = 'track-header';
+        this.trackHeader.innerHTML = `
+            <div class="timer-display" id="race-timer">00:00.00</div>
+            <div class="progress-bar-container">
+                <span class="flag-icon start-flag">🏁 START</span>
+                <div class="progress-track">
+                    <div class="player-icon p1-icon" id="p1-track-icon">P1</div>
+                    <div class="player-icon p2-icon" id="p2-track-icon">P2</div>
+                </div>
+                <span class="flag-icon finish-flag">🏆 FINISH</span>
+            </div>
+        `;
+        this.uiLayer.appendChild(this.trackHeader);
 
-        this.p1SpeedStat = this.createStatBox('P1 Speed', '0');
-        this.p1JumpStat = this.createStatBox('P1 Jump', '0');
-        this.p1BoostStat = this.createStatBox('P1 Boost', '100%');
-        this.p1CoinStat = this.createStatBox('P1 Coins', '0');
+        // --- SPLIT SCREEN HUDS ---
+        this.p1Hud = this.createPlayerHUD('p1', 'PLAYER 1', '#58a6ff');
+        this.p2Hud = this.createPlayerHUD('p2', 'PLAYER 2', '#ff7b72');
 
-        this.p2SpeedStat = this.createStatBox('P2 Speed', '0');
-        this.p2JumpStat = this.createStatBox('P2 Jump', '0');
-        this.p2BoostStat = this.createStatBox('P2 Boost', '100%');
-        this.p2CoinStat = this.createStatBox('P2 Coins', '0');
+        this.p1Hud.el.classList.add('top-hud');
+        this.p2Hud.el.classList.add('bottom-hud');
 
-        const p1HudGroup = document.createElement('div');
-        p1HudGroup.className = 'hud-group p1-hud';
-        p1HudGroup.appendChild(this.p1SpeedStat.el);
-        p1HudGroup.appendChild(this.p1JumpStat.el);
-        p1HudGroup.appendChild(this.p1BoostStat.el);
-        p1HudGroup.appendChild(this.p1CoinStat.el);
+        this.uiLayer.appendChild(this.p1Hud.el);
+        this.uiLayer.appendChild(this.p2Hud.el);
 
-        const p2HudGroup = document.createElement('div');
-        p2HudGroup.className = 'hud-group p2-hud';
-        p2HudGroup.appendChild(this.p2CoinStat.el);
-        p2HudGroup.appendChild(this.p2BoostStat.el);
-        p2HudGroup.appendChild(this.p2JumpStat.el);
-        p2HudGroup.appendChild(this.p2SpeedStat.el);
-        this.p2HudGroup = p2HudGroup;
+        // --- COUNTDOWN OVERLAY ---
+        this.countdownEl = document.createElement('div');
+        this.countdownEl.className = 'countdown-overlay';
+        this.uiLayer.appendChild(this.countdownEl);
 
-        this.hud.style.width = '100%';
-        this.hud.style.boxSizing = 'border-box';
-
-        this.hud.appendChild(p1HudGroup);
-        this.hud.appendChild(p2HudGroup);
-
-        // Celebration Banner
+        // --- CELEBRATION / NOTIFICATION BANNER ---
         this.celebration = document.createElement('div');
         this.celebration.className = 'celebration';
         this.uiLayer.appendChild(this.celebration);
 
-        // Controls Overlay
+        // --- VICTORY MODAL ---
+        this.buildVictoryModal();
+
+        // --- CONTROLS OVERLAY ---
         this.controlsOverlay = document.createElement('div');
         this.controlsOverlay.className = 'controls-overlay';
-        this.updateControlsOverlay();
-        this.controlsOverlay.style.display = 'none';
+        this.controlsOverlay.innerHTML = `
+            <span>[P1]</span> W (Jump / hold to Flip) | A/D (Drive) | L-Shift (Boost) &nbsp;&nbsp;&nbsp;&nbsp;
+            <span>[P2]</span> Up (Jump / hold to Flip) | Left/Right (Drive) | R-Shift (Boost)
+        `;
         this.uiLayer.appendChild(this.controlsOverlay);
 
-        // Touch Controls
-        this.touchControls = document.createElement('div');
-        this.touchControls.className = 'touch-controls';
-
-        this.touchDriveBtn = document.createElement('div');
-        this.touchDriveBtn.className = 'touch-btn touch-drive';
-        this.touchDriveBtn.innerText = 'DRIVE';
-
-        const rightGroup = document.createElement('div');
-        rightGroup.className = 'touch-group';
-
-        this.touchJumpBtn = document.createElement('div');
-        this.touchJumpBtn.className = 'touch-btn touch-jump';
-        this.touchJumpBtn.innerText = 'JUMP';
-
-        this.touchBoostBtn = document.createElement('div');
-        this.touchBoostBtn.className = 'touch-btn touch-boost';
-        this.touchBoostBtn.innerText = 'BOOST';
-
-        rightGroup.appendChild(this.touchJumpBtn);
-        rightGroup.appendChild(this.touchBoostBtn);
-
-        this.touchControls.appendChild(this.touchDriveBtn);
-        this.touchControls.appendChild(rightGroup);
-
-        this.touchControls.style.display = 'none'; // Hidden by default
-        this.uiLayer.appendChild(this.touchControls);
-
-        // Fullscreen Button
+        // --- FULLSCREEN BUTTON ---
         this.fullscreenBtn = document.createElement('div');
         this.fullscreenBtn.className = 'fullscreen-btn';
         this.fullscreenBtn.innerHTML = `
-            <svg viewBox="0 0 24 24" width="24" height="24" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round">
+            <svg viewBox="0 0 24 24" width="24" height="24" stroke="currentColor" stroke-width="2" fill="none">
                 <path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"></path>
             </svg>
         `;
         this.fullscreenBtn.onclick = () => this.toggleFullscreen();
         this.uiLayer.appendChild(this.fullscreenBtn);
 
-        // Main Menu
+        // --- MAIN MENU & DEBUG ---
         this.buildMenu();
-
-        // Debug Menu
         this.buildDebugMenu();
     }
 
-    createStatBox(label, initialValue) {
+    createPlayerHUD(playerId, labelText, colorHex) {
         const el = document.createElement('div');
-        el.className = 'stat';
+        el.className = `player-hud ${playerId}-hud-panel`;
 
-        const labelEl = document.createElement('span');
-        labelEl.className = 'stat-label';
-        labelEl.innerText = label;
+        el.innerHTML = `
+            <div class="hud-badge" style="border-color: ${colorHex}; color: ${colorHex}">
+                <span class="hud-player-name">${labelText}</span>
+                <span class="hud-rank" id="${playerId}-rank">1ST</span>
+            </div>
+            <div class="hud-metrics">
+                <div class="hud-metric">
+                    <span class="metric-label">SPEED</span>
+                    <span class="metric-value" id="${playerId}-speed">0 MPH</span>
+                </div>
+                <div class="hud-metric">
+                    <span class="metric-label">BOOST</span>
+                    <div class="boost-bar-outer">
+                        <div class="boost-bar-inner" id="${playerId}-boost-bar" style="width: 100%; background: ${colorHex}"></div>
+                    </div>
+                </div>
+                <div class="hud-metric">
+                    <span class="metric-label">COINS</span>
+                    <span class="metric-value" id="${playerId}-coins">0</span>
+                </div>
+                <div class="hud-metric">
+                    <span class="metric-label">DISTANCE</span>
+                    <span class="metric-value" id="${playerId}-dist">0 m</span>
+                </div>
+            </div>
+        `;
 
-        const valueEl = document.createElement('span');
-        valueEl.className = 'stat-value';
-        valueEl.innerText = initialValue;
-
-        const recordEl = document.createElement('div');
-        recordEl.className = 'stat-record';
-        recordEl.innerText = 'Record: ' + initialValue;
-
-        el.appendChild(labelEl);
-        el.appendChild(valueEl);
-        el.appendChild(recordEl);
-
-        return { el, valueEl, recordEl };
+        return { el };
     }
 
     buildMenu() {
@@ -140,114 +119,64 @@ export class UIManager {
 
         const title = document.createElement('h1');
         title.className = 'title';
-        title.innerText = 'MONSTER RUNNER';
+        title.innerText = 'MONSTER TRUCK SPLIT-SCREEN RACE';
         this.menu.appendChild(title);
 
-        // Player Mode Toggle
-        const toggleContainer = document.createElement('div');
-        toggleContainer.style.marginBottom = '30px';
-        toggleContainer.style.display = 'flex';
-        toggleContainer.style.gap = '20px';
-        toggleContainer.style.alignItems = 'center';
-
-        const toggleLabel = document.createElement('h3');
-        toggleLabel.innerText = 'Players:';
-        toggleLabel.style.color = '#fff';
-        toggleLabel.style.margin = '0';
-
-        const toggleBtn = document.createElement('button');
-        toggleBtn.innerText = this.isTwoPlayer ? '2 Players' : '1 Player';
-        toggleBtn.style.padding = '10px 20px';
-        toggleBtn.style.fontSize = '18px';
-        toggleBtn.style.fontWeight = 'bold';
-        toggleBtn.style.borderRadius = '8px';
-        toggleBtn.style.border = '2px solid var(--accent-color)';
-        toggleBtn.style.backgroundColor = 'rgba(0,0,0,0.5)';
-        toggleBtn.style.color = 'var(--text-color)';
-        toggleBtn.style.cursor = 'pointer';
-
-        toggleContainer.appendChild(toggleLabel);
-        toggleContainer.appendChild(toggleBtn);
-        this.menu.appendChild(toggleContainer);
+        const subTitle = document.createElement('p');
+        subTitle.className = 'subtitle';
+        subTitle.innerText = 'Race to the Finish Line in ~60 Seconds!';
+        this.menu.appendChild(subTitle);
 
         const playersContainer = document.createElement('div');
         playersContainer.className = 'players-container';
         playersContainer.style.display = 'flex';
-        playersContainer.style.gap = '50px';
+        playersContainer.style.gap = '40px';
         playersContainer.style.marginBottom = '20px';
 
-        // State
         this.p1Config = { truckStyle: 'monster', driverStyle: 'gabby' };
         this.p2Config = { truckStyle: 'dinosaur', driverStyle: 'barbie' };
         this.previews = {};
 
-        const p1UI = this.createPlayerSelection('Player 1', this.p1Config, 'p1');
-        const p2UI = this.createPlayerSelection('Player 2', this.p2Config, 'p2');
+        const p1UI = this.createPlayerSelection('Player 1 (Top Screen)', this.p1Config, 'p1');
+        const p2UI = this.createPlayerSelection('Player 2 (Bottom Screen)', this.p2Config, 'p2');
 
         playersContainer.appendChild(p1UI.container);
         playersContainer.appendChild(p2UI.container);
         this.menu.appendChild(playersContainer);
 
-        // Handle Toggle Logic
-        p2UI.container.style.display = this.isTwoPlayer ? 'flex' : 'none';
-        toggleBtn.onclick = () => {
-            this.isTwoPlayer = !this.isTwoPlayer;
-            toggleBtn.innerText = this.isTwoPlayer ? '2 Players' : '1 Player';
-            p2UI.container.style.display = this.isTwoPlayer ? 'flex' : 'none';
-            this.updateControlsOverlay();
-        };
-
-        // Start Button
         const startBtn = document.createElement('button');
         startBtn.className = 'start-btn';
-        startBtn.innerText = 'START ENGINES';
+        startBtn.innerText = 'START SPLIT-SCREEN RACE 🏁';
         startBtn.onclick = (e) => {
-            e.target.blur(); // Prevent spacebar from clicking this later
+            e.target.blur();
             if (this.callbacks.onStart) {
-                const config = { player1: this.p1Config };
-                if (this.isTwoPlayer) {
-                    config.player2 = this.p2Config;
-                }
-                this.callbacks.onStart(config);
+                this.callbacks.onStart({
+                    player1: this.p1Config,
+                    player2: this.p2Config
+                });
             }
         };
         this.menu.appendChild(startBtn);
 
         this.container.appendChild(this.menu);
 
-        // Initial render
         this.updatePreview('p1');
         this.updatePreview('p2');
-    }
-
-    updateControlsOverlay() {
-        if (this.controlsOverlay) {
-            if (this.isTwoPlayer) {
-                this.controlsOverlay.innerHTML = '<span>[P1]</span> WASD (Toggle Drive) & L-Shift &nbsp;&nbsp;|&nbsp;&nbsp; <span>[P2]</span> Arrows (Toggle) & R-Shift';
-            } else {
-                this.controlsOverlay.innerHTML = '<span>[A/D]</span> Toggle Drive &nbsp;&nbsp;|&nbsp;&nbsp; <span>[L-Shift]</span> Boost &nbsp;&nbsp;|&nbsp;&nbsp; <span>[W]</span> Jump';
-            }
-        }
     }
 
     createPlayerSelection(titleText, config, playerId) {
         const container = document.createElement('div');
         container.className = 'player-config';
-        container.style.display = 'flex';
-        container.style.flexDirection = 'column';
-        container.style.alignItems = 'center';
 
         const title = document.createElement('h2');
         title.innerText = titleText;
-        title.style.marginBottom = '15px';
-        title.style.color = 'white';
+        title.style.marginBottom = '10px';
+        title.style.color = playerId === 'p1' ? '#58a6ff' : '#ff7b72';
         container.appendChild(title);
 
         const previewContainer = document.createElement('div');
         previewContainer.className = 'preview-box';
-        // Make it slightly smaller so both fit on screen nicely
-        previewContainer.style.width = '400px';
-        previewContainer.style.height = '240px';
+        previewContainer.style.borderColor = playerId === 'p1' ? '#58a6ff' : '#ff7b72';
 
         const truckPreview = document.createElement('div');
         truckPreview.style.position = 'absolute';
@@ -258,26 +187,22 @@ export class UIManager {
 
         const driverPreview = document.createElement('div');
         driverPreview.style.position = 'absolute';
-        driverPreview.style.bottom = '60px'; // Adjusted for smaller box
-        driverPreview.style.left = '130px';  // Adjusted for smaller box
-        driverPreview.style.width = '100px';
-        driverPreview.style.height = '100px';
+        driverPreview.style.bottom = '45px';
+        driverPreview.style.left = '110px';
+        driverPreview.style.width = '90px';
+        driverPreview.style.height = '90px';
         driverPreview.style.zIndex = '2';
 
         previewContainer.appendChild(truckPreview);
         previewContainer.appendChild(driverPreview);
         container.appendChild(previewContainer);
 
-        // Save preview references
         this.previews[playerId] = { truckPreview, driverPreview, config };
 
         const options = document.createElement('div');
         options.className = 'menu-options';
-        // Reduce gap to fit screen
-        options.style.gap = '20px';
 
-        // Truck Style Selector
-        const truckGroup = this.createSelectorGroup('Truck', [
+        const truckGroup = this.createSelectorGroup('Truck Style', [
             { id: 'monster' },
             { id: 'dinosaur' },
             { id: 'space' },
@@ -289,7 +214,6 @@ export class UIManager {
             this.updatePreview(playerId);
         }, 'truck', config.truckStyle);
 
-        // Driver Style Selector
         const driverGroup = this.createSelectorGroup('Driver', [
             { id: 'gabby' },
             { id: 'daniel_tiger' },
@@ -316,9 +240,11 @@ export class UIManager {
         const color = CharacterGraphics.getTruckColors(config.truckStyle)[0];
 
         truckPreview.innerHTML = CharacterGraphics.generateTruckSVG(config.truckStyle, color);
-        // Ensure the preview truck is not skewed in ratio
-        truckPreview.querySelector('svg').style.transform = 'scale(1.0) translateY(10px)';
-        truckPreview.querySelector('svg').style.transformOrigin = 'bottom center';
+        const svg = truckPreview.querySelector('svg');
+        if (svg) {
+            svg.style.transform = 'scale(0.85) translateY(15px)';
+            svg.style.transformOrigin = 'bottom center';
+        }
 
         driverPreview.innerHTML = CharacterGraphics.generateDriverSVG(config.driverStyle);
     }
@@ -334,18 +260,14 @@ export class UIManager {
         const selector = document.createElement('div');
         selector.className = 'card-selector';
 
-        items.forEach((item, index) => {
+        items.forEach((item) => {
             const card = document.createElement('div');
             card.className = 'card';
-            // Also scale down cards slightly to ensure they fit side-by-side
-            card.style.width = '80px';
-            card.style.height = '80px';
             if (item.id === initialSelected) card.classList.add('selected');
 
-            // Render SVG preview
             const visual = document.createElement('div');
-            visual.style.width = '80px';
-            visual.style.height = '60px';
+            visual.style.width = '70px';
+            visual.style.height = '50px';
             visual.style.display = 'flex';
             visual.style.alignItems = 'center';
             visual.style.justifyContent = 'center';
@@ -373,101 +295,149 @@ export class UIManager {
         return group;
     }
 
+    buildVictoryModal() {
+        this.victoryModal = document.createElement('div');
+        this.victoryModal.className = 'victory-modal hidden';
+        this.victoryModal.innerHTML = `
+            <div class="victory-card">
+                <div class="victory-trophy">🏆</div>
+                <h1 class="victory-title" id="winner-title">PLAYER 1 WINS!</h1>
+                <div class="victory-time" id="winner-time">TIME: 00:54.32</div>
+                
+                <div class="victory-stats">
+                    <div class="v-stat-row">
+                        <span class="v-label">P1 Distance:</span>
+                        <span class="v-val" id="v-p1-dist">30,000 m</span>
+                    </div>
+                    <div class="v-stat-row">
+                        <span class="v-label">P2 Distance:</span>
+                        <span class="v-val" id="v-p2-dist">28,450 m</span>
+                    </div>
+                    <div class="v-stat-row">
+                        <span class="v-label">P1 Coins Collected:</span>
+                        <span class="v-val" id="v-p1-coins">12</span>
+                    </div>
+                    <div class="v-stat-row">
+                        <span class="v-label">P2 Coins Collected:</span>
+                        <span class="v-val" id="v-p2-coins">9</span>
+                    </div>
+                </div>
+
+                <div class="victory-buttons">
+                    <button class="v-btn play-again-btn" id="v-restart-btn">RACE AGAIN 🏎️</button>
+                    <button class="v-btn menu-btn" id="v-menu-btn">CHANGE VEHICLES ⚙️</button>
+                </div>
+            </div>
+        `;
+
+        this.uiLayer.appendChild(this.victoryModal);
+
+        document.getElementById('v-restart-btn').onclick = () => {
+            this.victoryModal.classList.add('hidden');
+            if (this.callbacks.onRestart) this.callbacks.onRestart();
+        };
+
+        document.getElementById('v-menu-btn').onclick = () => {
+            this.victoryModal.classList.add('hidden');
+            this.showMenu();
+        };
+    }
+
+    startCountdown() {
+        this.countdownEl.classList.add('active');
+        this.countdownEl.innerText = '3';
+
+        setTimeout(() => { this.countdownEl.innerText = '2'; }, 1000);
+        setTimeout(() => { this.countdownEl.innerText = '1'; }, 2000);
+        setTimeout(() => {
+            this.countdownEl.innerText = 'GO!';
+            this.countdownEl.style.color = '#2ea043';
+        }, 3000);
+
+        setTimeout(() => {
+            this.countdownEl.classList.remove('active');
+            this.countdownEl.style.color = '';
+        }, 4000);
+    }
+
+    showVictoryModal(data) {
+        document.getElementById('winner-title').innerText = `${data.winner} WINS!`;
+        document.getElementById('winner-title').style.color = data.winner === 'PLAYER 1' ? '#58a6ff' : '#ff7b72';
+        document.getElementById('winner-time').innerText = `WINNING TIME: ${data.time}`;
+        document.getElementById('v-p1-dist').innerText = `${data.p1Dist.toLocaleString()} m`;
+        document.getElementById('v-p2-dist').innerText = `${data.p2Dist.toLocaleString()} m`;
+        document.getElementById('v-p1-coins').innerText = `${data.p1Coins}`;
+        document.getElementById('v-p2-coins').innerText = `${data.p2Coins}`;
+
+        this.victoryModal.classList.remove('hidden');
+    }
+
     showMenu() {
         this.menu.classList.remove('hidden');
-        this.hud.style.display = 'none';
+        this.trackHeader.style.display = 'none';
+        this.p1Hud.el.style.display = 'none';
+        this.p2Hud.el.style.display = 'none';
         this.controlsOverlay.style.display = 'none';
-        this.touchControls.style.display = 'none';
         this.celebration.classList.remove('active');
     }
 
     hideMenu() {
         this.menu.classList.add('hidden');
-        this.hud.style.display = 'flex';
+        this.trackHeader.style.display = 'flex';
+        this.p1Hud.el.style.display = 'flex';
+        this.p2Hud.el.style.display = 'flex';
         this.controlsOverlay.style.display = 'block';
-        // Let CSS media query display flex handle the actual visibility
-        this.touchControls.style.display = '';
-
-        const resetStat = (stat, label) => {
-            stat.valueEl.innerText = label.includes('Boost') ? '100%' : (label.includes('Speed') ? '0 MPH' : (label.includes('Coin') ? '0' : '0 M'));
-            stat.recordEl.innerText = label.includes('Coin') ? 'Rounds Won: 0' : `Record: ${stat.valueEl.innerText}`;
-        };
-
-        resetStat(this.p1SpeedStat, 'P1 Speed');
-        resetStat(this.p1JumpStat, 'P1 Jump');
-        resetStat(this.p1BoostStat, 'P1 Boost');
-        resetStat(this.p1CoinStat, 'P1 Coins');
-
-        if (this.isTwoPlayer) {
-            this.p2HudGroup.style.display = 'flex';
-            resetStat(this.p2SpeedStat, 'P2 Speed');
-            resetStat(this.p2JumpStat, 'P2 Jump');
-            resetStat(this.p2BoostStat, 'P2 Boost');
-            resetStat(this.p2CoinStat, 'P2 Coins');
-        } else {
-            this.p2HudGroup.style.display = 'none';
-        }
     }
 
-    updateHUD(scores, boosts) {
-        const now = performance.now();
+    updateRaceHUD(scores, boosts, raceData) {
+        // Update Timer
+        const ms = raceData.timer || 0;
+        const totalSec = ms / 1000;
+        const mins = Math.floor(totalSec / 60);
+        const secs = (totalSec % 60).toFixed(2);
+        const formattedSecs = secs < 10 ? '0' + secs : secs;
+        document.getElementById('race-timer').innerText = `${mins < 10 ? '0' + mins : mins}:${formattedSecs}`;
 
-        const updatePlayerHUD = (prefix, statScores, boostPercent) => {
-            const speedStat = this[`${prefix}SpeedStat`];
-            const jumpStat = this[`${prefix}JumpStat`];
-            const boostStat = this[`${prefix}BoostStat`];
-            const coinStat = this[`${prefix}CoinStat`];
+        // Update Track Progress Bar Mini-Map
+        const finishX = raceData.finishX || 30000;
+        const p1Pct = Math.min(100, Math.max(0, (scores.p1.distance / finishX) * 100));
+        const p2Pct = Math.min(100, Math.max(0, (scores.p2.distance / finishX) * 100));
 
-            if (statScores) {
-                speedStat.valueEl.innerText = `${statScores.speed} MPH`;
-                jumpStat.valueEl.innerText = `${statScores.jumpDistance} M`;
-                coinStat.valueEl.innerText = `${statScores.coinCount || 0}`;
-                speedStat.recordEl.innerText = `Record: ${statScores.maxSpeed} MPH`;
-                jumpStat.recordEl.innerText = `Record: ${statScores.maxJump} M`;
-                coinStat.recordEl.innerText = `Rounds Won: ${statScores.roundsWon || 0}`;
-            }
+        document.getElementById('p1-track-icon').style.left = `${p1Pct}%`;
+        document.getElementById('p2-track-icon').style.left = `${p2Pct}%`;
 
-            if (boostPercent !== undefined) {
-                boostStat.valueEl.innerText = `${Math.round(boostPercent)}%`;
-                if (boostPercent < 20) {
-                    boostStat.valueEl.style.color = '#ff4444';
-                } else {
-                    boostStat.valueEl.style.color = '#ffffff';
-                }
-            }
-        };
+        // Update Ranks (1ST / 2ND)
+        const p1Ahead = scores.p1.distance >= scores.p2.distance;
+        document.getElementById('p1-rank').innerText = p1Ahead ? '1ST' : '2ND';
+        document.getElementById('p1-rank').style.color = p1Ahead ? '#ffd700' : '#8b949e';
+        document.getElementById('p2-rank').innerText = p1Ahead ? '2ND' : '1ST';
+        document.getElementById('p2-rank').style.color = p1Ahead ? '#8b949e' : '#ffd700';
 
-        if (scores.p1) updatePlayerHUD('p1', scores.p1, boosts?.p1);
-        if (scores.p2) updatePlayerHUD('p2', scores.p2, boosts?.p2);
+        // Update P1 HUD
+        document.getElementById('p1-speed').innerText = `${scores.p1.speed} MPH`;
+        document.getElementById('p1-coins').innerText = `${scores.p1.coinCount}`;
+        document.getElementById('p1-dist').innerText = `${scores.p1.distance.toLocaleString()} m`;
+        document.getElementById('p1-boost-bar').style.width = `${Math.round(boosts.p1)}%`;
 
-        // Minute Highscore Tracking
-        if (now - this.lastTimeHighscore > 60000) {
-            this.minuteHighscore = 0;
-            this.lastTimeHighscore = now;
-        }
-
-        const maxJump = Math.max(scores.p1?.jumpDistance || 0, scores.p2?.jumpDistance || 0);
-        if (maxJump > this.minuteHighscore && maxJump > 50) {
-            this.minuteHighscore = maxJump;
-            this.triggerCelebration('MINUTE HIGH SCORE!', maxJump);
-        }
+        // Update P2 HUD
+        document.getElementById('p2-speed').innerText = `${scores.p2.speed} MPH`;
+        document.getElementById('p2-coins').innerText = `${scores.p2.coinCount}`;
+        document.getElementById('p2-dist').innerText = `${scores.p2.distance.toLocaleString()} m`;
+        document.getElementById('p2-boost-bar').style.width = `${Math.round(boosts.p2)}%`;
     }
 
     triggerCelebration(text, value) {
-        // Prevent spamming
         if (this.celebration.classList.contains('active')) return;
-
         this.celebration.innerText = `${text} (${value})`;
         this.celebration.classList.add('active');
 
-        // Create simple confetti elements
-        for (let i = 0; i < 30; i++) {
+        for (let i = 0; i < 25; i++) {
             this.createParticle();
         }
 
         setTimeout(() => {
             this.celebration.classList.remove('active');
-        }, 2000);
+        }, 1800);
     }
 
     createParticle() {
@@ -486,8 +456,7 @@ export class UIManager {
         const angle = Math.random() * Math.PI * 2;
         const velocity = 5 + Math.random() * 15;
         let vx = Math.cos(angle) * velocity;
-        let vy = Math.sin(angle) * velocity - 10; // Upward bias
-
+        let vy = Math.sin(angle) * velocity - 10;
         let life = 1;
 
         const animate = () => {
@@ -495,20 +464,12 @@ export class UIManager {
                 p.remove();
                 return;
             }
-
-            vy += 0.5; // Gravity
-            const currentLeft = parseFloat(p.style.left) || window.innerWidth / 2;
-            const currentTop = parseFloat(p.style.top) || 100;
-
-            // Need to handle initial % based left vs px based for simplified particle sim
+            vy += 0.5;
             if (p.style.left === '50%') p.style.left = `${window.innerWidth / 2}px`;
-
             p.style.left = `${parseFloat(p.style.left) + vx}px`;
             p.style.top = `${parseFloat(p.style.top) + vy}px`;
-
             life -= 0.02;
             p.style.opacity = life;
-
             requestAnimationFrame(animate);
         };
 
@@ -519,9 +480,9 @@ export class UIManager {
         this.debugMenu = document.createElement('div');
         this.debugMenu.className = 'debug-menu';
         this.debugMenu.style.position = 'absolute';
-        this.debugMenu.style.top = '60px'; // Moved down to avoid overlapping the boost gauge
+        this.debugMenu.style.top = '60px';
         this.debugMenu.style.right = '10px';
-        this.debugMenu.style.backgroundColor = 'rgba(0, 0, 0, 0.8)';
+        this.debugMenu.style.backgroundColor = 'rgba(0, 0, 0, 0.85)';
         this.debugMenu.style.color = '#00ff00';
         this.debugMenu.style.padding = '15px';
         this.debugMenu.style.fontFamily = 'monospace';
@@ -533,13 +494,11 @@ export class UIManager {
         title.style.marginTop = '0';
         this.debugMenu.appendChild(title);
 
-        this.debugSliders = {};
-
         const addSlider = (label, min, max, step, initialValue, onChange) => {
             const container = document.createElement('div');
-            container.style.marginBottom = '10px';
-
+            container.style.marginBottom = '8px';
             const labelEl = document.createElement('div');
+            labelEl.style.fontSize = '11px';
             labelEl.innerText = `${label}: ${initialValue}`;
 
             const slider = document.createElement('input');
@@ -558,55 +517,38 @@ export class UIManager {
             container.appendChild(labelEl);
             container.appendChild(slider);
             this.debugMenu.appendChild(container);
-
-            this.debugSliders[label] = { labelEl, slider };
         };
 
         if (this.callbacks.onDebugChange) {
-            addSlider('Gravity', 0.5, 5.0, 0.1, 0.6, (v) => this.callbacks.onDebugChange('gravity', v));
-            addSlider('Wheel Friction', 0.1, 10.0, 0.1, 8.3, (v) => this.callbacks.onDebugChange('friction', v));
-            addSlider('Wheel Density', 0.001, 0.2, 0.001, 0.05, (v) => this.callbacks.onDebugChange('density', v));
-            addSlider('Accel Force', 0.5, 10.0, 0.5, 9.5, (v) => this.callbacks.onDebugChange('accelForce', v));
-            addSlider('Velocity Max', 2.0, 30.0, 1.0, 23.0, (v) => this.callbacks.onDebugChange('maxAngularVel', v));
-            addSlider('Jump Force', 10.0, 60.0, 1.0, 25.0, (v) => this.callbacks.onDebugChange('jumpForce', v));
-            addSlider('Susp Stiffness', 0.01, 0.5, 0.01, 0.03, (v) => this.callbacks.onDebugChange('suspensionStiffness', v));
-            addSlider('Susp Damping', 0.01, 0.5, 0.01, 0.05, (v) => this.callbacks.onDebugChange('suspensionDamping', v));
-            addSlider('Boost Force', 0.01, 1, 0.01, 0.4, (v) => this.callbacks.onDebugChange('boostForce', v));
+            const t = DEFAULT_TUNING;
+            const bind = (key) => (v) => this.callbacks.onDebugChange(key, v);
+
+            addSlider('Gravity', 1.0, 5.0, 0.1, t.gravity, bind('gravity'));
+            addSlider('Spring Rate', 0.002, 0.02, 0.0005, t.springStiffness, bind('springStiffness'));
+            addSlider('Spring Progression', 0, 5, 0.1, t.springProgressive, bind('springProgressive'));
+            addSlider('Bump Damping', 0.002, 0.06, 0.001, t.dampingCompression, bind('dampingCompression'));
+            addSlider('Rebound Damping', 0.002, 0.08, 0.001, t.dampingRebound, bind('dampingRebound'));
+            addSlider('Drive Torque', 0.2, 6.0, 0.1, t.driveTorque, bind('driveTorque'));
+            addSlider('Top Speed (wheel spin)', 0.2, 1.0, 0.02, t.maxWheelSpin, bind('maxWheelSpin'));
+            addSlider('Jump Velocity', 8, 34, 0.5, t.jumpVelocity, bind('jumpVelocity'));
+            addSlider('Boost (g)', 0.2, 4.0, 0.1, t.boostGravities, bind('boostGravities'));
+            addSlider('Boost Top Speed', 15, 50, 1, t.boostTopSpeed, bind('boostTopSpeed'));
+            addSlider('Air Control', 0, 5, 0.1, t.airControlTorque, bind('airControlTorque'));
         }
 
         this.container.appendChild(this.debugMenu);
     }
 
     toggleDebugMenu() {
-        if (this.debugMenu.style.display === 'none') {
-            this.debugMenu.style.display = 'block';
-        } else {
-            this.debugMenu.style.display = 'none';
-        }
+        this.debugMenu.style.display = this.debugMenu.style.display === 'none' ? 'block' : 'none';
     }
 
     toggleFullscreen() {
         const elem = document.documentElement;
-        if (!document.fullscreenElement && !document.mozFullScreenElement && !document.webkitFullscreenElement && !document.msFullscreenElement) {
-            if (elem.requestFullscreen) {
-                elem.requestFullscreen();
-            } else if (elem.msRequestFullscreen) {
-                elem.msRequestFullscreen();
-            } else if (elem.mozRequestFullScreen) {
-                elem.mozRequestFullScreen();
-            } else if (elem.webkitRequestFullscreen) {
-                elem.webkitRequestFullscreen(Element.ALLOW_KEYBOARD_INPUT);
-            }
+        if (!document.fullscreenElement) {
+            if (elem.requestFullscreen) elem.requestFullscreen();
         } else {
-            if (document.exitFullscreen) {
-                document.exitFullscreen();
-            } else if (document.msExitFullscreen) {
-                document.msExitFullscreen();
-            } else if (document.mozCancelFullScreen) {
-                document.mozCancelFullScreen();
-            } else if (document.webkitExitFullscreen) {
-                document.webkitExitFullscreen();
-            }
+            if (document.exitFullscreen) document.exitFullscreen();
         }
     }
 }

@@ -1,0 +1,5 @@
+# Local Claude Code settings (machine-specific paths, not useful to anyone else).
+# .claude/launch.json IS committed - it tells the dev server how to start.
+.claude/settings.local.json
+
+.DS_Store
