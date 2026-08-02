@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
+import { AudioManager, BPM_RANGE, SCHEDULER_TICK_MS, TEMPO_GLIDE_MS } from '../src/game/AudioManager.js';
 import {
     ARP_SEQUENCE,
     BACKBEAT,
@@ -162,6 +163,89 @@ test('harmony lines stay in key and below the melody', () => {
         // A third or so below - close enough to sound like one part, not two tunes.
         assert.ok(note - harmony <= 5, `harmony sits ${note - harmony} semitones down`);
     }
+});
+
+// --------------------------------------------------------------- tempo glide
+// AudioManager needs a browser for sound, but its tempo logic is pure state and
+// runs fine here. These exist because tempo used to follow speed instantly, and
+// anything downstream of tempo that moves - notably the delay line - turns that
+// into audible pitch artefacts.
+
+const tick = (audio, ms = SCHEDULER_TICK_MS) => audio.advanceTempo(ms);
+const settle = (audio, ms) => {
+    for (let elapsed = 0; elapsed < ms; elapsed += SCHEDULER_TICK_MS) tick(audio);
+};
+
+test('speed sets a tempo target rather than the tempo itself', () => {
+    const audio = new AudioManager();
+    const resting = audio.currentBpm;
+
+    audio.updateSpeed(70);
+    assert.equal(audio.currentBpm, resting, 'updateSpeed moved the tempo directly');
+    assert.ok(audio.targetIntensity > 0.9, 'target did not follow the speed');
+});
+
+test('tempo glides to the target instead of snapping', () => {
+    const audio = new AudioManager();
+    audio.updateSpeed(70);
+
+    const afterOneTick = tick(audio);
+    assert.ok(
+        afterOneTick - audio.baseBpm < BPM_RANGE * 0.1,
+        `tempo jumped ${(afterOneTick - audio.baseBpm).toFixed(1)}bpm in a single 25ms tick`
+    );
+
+    settle(audio, TEMPO_GLIDE_MS * 5);
+    assert.ok(
+        Math.abs(audio.currentBpm - (audio.baseBpm + BPM_RANGE)) < 1,
+        `tempo settled at ${audio.currentBpm.toFixed(1)}, not the full ${audio.baseBpm + BPM_RANGE}`
+    );
+});
+
+test('a one-frame speed spike barely moves the tempo', () => {
+    // Landing a jump or clipping a boost pad spikes the speedometer for a few
+    // frames. The drummer should not notice.
+    const audio = new AudioManager();
+    audio.updateSpeed(30);
+    settle(audio, 4000);
+    const cruising = audio.currentBpm;
+
+    audio.updateSpeed(85);
+    tick(audio);
+    audio.updateSpeed(30);
+    settle(audio, 200);
+
+    assert.ok(
+        Math.abs(audio.currentBpm - cruising) < 1.5,
+        `a momentary spike shifted the tempo by ${Math.abs(audio.currentBpm - cruising).toFixed(2)}bpm`
+    );
+});
+
+test('tempo stays inside its designed range whatever the speed', () => {
+    const audio = new AudioManager();
+
+    for (const speed of [-50, 0, 8, 45, 200, 100000]) {
+        audio.updateSpeed(speed);
+        settle(audio, TEMPO_GLIDE_MS * 6);
+        assert.ok(Number.isFinite(audio.currentBpm), `speed ${speed} produced ${audio.currentBpm}`);
+        assert.ok(
+            audio.currentBpm >= audio.baseBpm - 0.001 && audio.currentBpm <= audio.baseBpm + BPM_RANGE + 0.001,
+            `speed ${speed} drove the tempo to ${audio.currentBpm.toFixed(1)}bpm`
+        );
+    }
+});
+
+test('slowing down glides too, and lands back at rest', () => {
+    const audio = new AudioManager();
+    audio.updateSpeed(80);
+    settle(audio, TEMPO_GLIDE_MS * 6);
+
+    audio.updateSpeed(0);
+    const firstTick = tick(audio);
+    assert.ok(firstTick > audio.baseBpm + BPM_RANGE * 0.9, 'tempo dropped off a cliff when the throttle closed');
+
+    settle(audio, TEMPO_GLIDE_MS * 6);
+    assert.ok(Math.abs(audio.currentBpm - audio.baseBpm) < 1, 'tempo never came back down');
 });
 
 test('the coin ladder rises and stays in key', () => {

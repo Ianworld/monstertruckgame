@@ -12,6 +12,19 @@ import {
     harmoniseBelow
 } from './MusicScore.js';
 
+/** How often the lookahead scheduler wakes up, in ms. */
+export const SCHEDULER_TICK_MS = 25;
+
+/**
+ * Time constant for tempo changes. Long on purpose: the truck's speed jumps
+ * around on every bump, and a tempo that chased it would sound like a drummer
+ * losing their place. About a second to settle reads as the track responding.
+ */
+export const TEMPO_GLIDE_MS = 900;
+
+/** Slowest to fastest, in BPM added on top of baseBpm. */
+export const BPM_RANGE = 26;
+
 /**
  * The soundtrack: a small synth-and-mixer rig rather than a row of bare
  * oscillators.
@@ -38,6 +51,7 @@ export class AudioManager {
 
         this.speed = 0;
         this.intensity = 0;          // 0..1, how hard the player is driving
+        this.targetIntensity = 0;    // where the driving says it should be
         this.baseBpm = 100;
         this.currentBpm = 100;
 
@@ -204,18 +218,20 @@ export class AudioManager {
         panR.connect(this.delayReturn);
         this.delayReturn.connect(this.masterGain);
 
-        this.syncDelayToTempo(0);
-    }
-
-    /** Dotted-eighth repeats, the classic "wide" delay setting. */
-    syncDelayToTempo(when) {
-        if (!this.delayL) return;
-        const beat = 60 / this.currentBpm;
-        const time = beat * 0.75;
-        const now = when || this.audioCtx.currentTime;
-        // Ramp rather than jump: retuning a delay line instantly warbles.
-        this.delayL.delayTime.setTargetAtTime(time, now, 0.4);
-        this.delayR.delayTime.setTargetAtTime(time * 0.5, now, 0.4);
+        // Dotted-eighth repeats, set ONCE and never touched again.
+        //
+        // This used to follow the tempo. Do not make it do that again: changing a
+        // delay line's length re-reads its buffer at a different rate, which
+        // pitch-shifts whatever is already inside it. With the tempo tracking road
+        // speed, the delay was being retuned every 25ms, and since the arp and lead
+        // are what feed it, the melody warbled continuously. Ramping the change
+        // does not help - a slower slide is a slower warble.
+        //
+        // Fixed at the base tempo, the repeats drift a few percent off the grid at
+        // the top of the tempo range. That is inaudible; the warble was not.
+        const beat = 60 / this.baseBpm;
+        this.delayL.delayTime.value = beat * 0.75;
+        this.delayR.delayTime.value = beat * 0.375;
     }
 
     createReverbImpulse(seconds, decay) {
@@ -274,11 +290,28 @@ export class AudioManager {
         }
     }
 
+    /**
+     * Called every frame with the truck's speed. Sets a TARGET only - the tempo
+     * eases towards it in advanceTempo() rather than snapping to whatever the
+     * speedometer said this frame, which would make the groove rush and drag with
+     * every bump.
+     */
     updateSpeed(speed) {
         this.speed = speed;
         // Idling is calm; the track is at full tilt by cruising speed.
-        this.intensity = Math.max(0, Math.min(1, (speed - 8) / 50));
-        this.currentBpm = this.baseBpm + this.intensity * 26;
+        this.targetIntensity = Math.max(0, Math.min(1, (speed - 8) / 50));
+    }
+
+    /**
+     * Ease the tempo towards the target. Pure state, no audio nodes, so the glide
+     * can be tested without a sound card.
+     * @param {number} dt milliseconds since the last call
+     */
+    advanceTempo(dt) {
+        const ease = 1 - Math.exp(-dt / TEMPO_GLIDE_MS);
+        this.intensity += (this.targetIntensity - this.intensity) * ease;
+        this.currentBpm = this.baseBpm + this.intensity * BPM_RANGE;
+        return this.currentBpm;
     }
 
     /**
@@ -309,6 +342,8 @@ export class AudioManager {
     scheduler() {
         if (!this.isPlaying) return;
 
+        this.advanceTempo(SCHEDULER_TICK_MS);
+
         const stepDuration = (60 / this.currentBpm) / 4;
         while (this.nextNoteTime < this.audioCtx.currentTime + 0.12) {
             this.scheduleStep(this.currentStep, this.nextNoteTime, stepDuration);
@@ -316,8 +351,7 @@ export class AudioManager {
             this.currentStep = (this.currentStep + 1) % TOTAL_STEPS;
         }
 
-        this.syncDelayToTempo();
-        this.timerId = setTimeout(() => this.scheduler(), 25);
+        this.timerId = setTimeout(() => this.scheduler(), SCHEDULER_TICK_MS);
     }
 
     // ----------------------------------------------------------- arrangement

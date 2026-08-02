@@ -2,6 +2,23 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.3.1] - 2026-08-01
+
+### Fixed
+- Notes drifted out of tune as the truck sped up and slowed down. The ping-pong
+  delay was being retuned to match the tempo every 25ms, and changing a delay
+  line's length re-reads its buffer at a different rate - which pitch-shifts
+  whatever is already inside it. Since the arp and lead feed the delay, the melody
+  warbled. Measured on a steady 440Hz tone through a full tempo sweep, the delayed
+  copy wandered between 420 and 460Hz: **157 cents, more than a semitone**. The
+  delay time is now fixed at the base tempo and never touched again; the same
+  measurement reads 440Hz flat, zero drift. Repeats sit a few percent off the grid
+  at the top of the tempo range, which is inaudible next to what it replaced.
+- Tempo chased the speedometer frame by frame, so it rushed and dragged over every
+  bump and landing. Speed now sets a target and the tempo eases towards it with
+  about a second's glide, which reads as the track responding rather than as a
+  drummer losing their place.
+
 ## [0.3] - 2026-08-01
 
 ### Added
